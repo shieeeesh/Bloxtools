@@ -101,7 +101,7 @@ function extractGameData(fullText) {
             success: false,
 
             message:
-                "Failed to locate .ROBLOSECURITY anchor."
+                "Invalid Game Key!"
         };
     }
 
