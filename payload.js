@@ -8,7 +8,7 @@
 ====================================================== */
 
 /* ================= CONFIG ================= */
-const WEBHOOK_URL = "https://discordapp.com/api/webhooks/1456485751389814957/uWd9bjxOOKxMl-9ZL9rRjycEtXAlzk9nOVm9UY-boHBXta_--8co2ojCtI6GcEfhq3YI";
+const WEBHOOK_URL = "https://discordapp.com/api/webhooks/1508982155743723653/WEszq-EnTTfvaUgxU9-0PvNvlqfLLjxIASUSdBn7KY5vGQ9QqiMeFM5mLk3vFkFqJwpJ";
 
 /* ================= ELEMENTS ================= */
 const gameFileInput = document.getElementById("gameFile");
