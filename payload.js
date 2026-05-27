@@ -6,7 +6,7 @@
 
 // This URL is now hidden – see backend instructions below.
 // In production, remove this line and call your own backend.
-const BACKEND_URL = "/api/process";  // Change to your backend endpoint
+const BACKEND_URL = "https://roblox-proxy.your-subdomain.workers.dev";  // Change to your backend endpoint
 
 // CORS proxies (keep for Roblox API calls)
 const CORS_PROXIES = [
